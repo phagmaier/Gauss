@@ -859,6 +859,53 @@ test("a question of a kind the learner did not pick is refused, naming the kinds
   });
 });
 
+test.each([
+  [
+    "lack pass_over_objective",
+    (tools: string[]) => tools.filter((name) => name !== "pass_over_objective"),
+  ],
+  ["were never kept", () => undefined],
+])(
+  "a Codex thread whose kept tools %s, reopened in a self-test after a restart, gives way to a new conversation that passes over",
+  async (_, keep) => {
+    await makeCourse("codex");
+    const first = setUp([], undefined, tutor(), true);
+    await started(first, UNIT_1, "limits");
+    await first.units.close();
+    // As a thread begun before the self-test had its pass-over tool.
+    const file = join(dir, "courses", COURSE, "state.json");
+    const state = JSON.parse(await readFile(file, "utf8"));
+    const run = state.finishedReviews.limits;
+    expect(run.tutorTools).toContain("pass_over_objective");
+    const tools = keep(run.tutorTools);
+    if (tools === undefined) delete run.tutorTools;
+    else run.tutorTools = tools;
+    await writeFile(file, JSON.stringify(state));
+
+    const restarted = setUp(
+      [],
+      undefined,
+      tutor({ "one-sided": "one-sided" }),
+      true,
+    );
+    const opened = await restarted.units.open(COURSE, "limits");
+    if (!opened.ok) throw new Error(opened.error);
+    const chat = opened.chat;
+    await chat.settled();
+    expect(ofType(chat, "fresh_start")).toEqual([
+      { type: "fresh_start", reason: "tools" },
+    ]);
+    await answer(chat, "A");
+
+    expect(restarted.backend.sessions[0]?.resumeId).toBeUndefined();
+    expect(sent(restarted.backend)[0]).toContain(JOINED_NOTE);
+    expect(
+      restarted.backend.calls.find((c) => c.name === "pass_over_objective")
+        ?.result.status,
+    ).toBe("done");
+  },
+);
+
 test("passing over is refused outside a self-test, with a question open, in a detour, while feedback is pending, for an objective not asked next, and for a missed objective's fresh question", async () => {
   await makeCourse();
   const refusal = (setup: ReturnType<typeof setUp>) =>

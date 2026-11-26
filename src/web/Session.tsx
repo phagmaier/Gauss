@@ -1424,10 +1424,7 @@ function ThreadItem(props: {
       return (
         <div className="pf-mark">
           <span>
-            <b>Fresh start</b>{" "}
-            {item.reason === "learner"
-              ? "The tutor has your progress, not the conversation above."
-              : "The earlier conversation could not be resumed, so the tutor started a new one from your progress."}
+            <b>Fresh start</b> {freshStartLine(item.reason)}
           </span>
         </div>
       );

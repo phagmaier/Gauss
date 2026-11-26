@@ -175,7 +175,7 @@ export interface UnitRecord {
    * them out, so the next start of the unit makes a new session. A finished
    * unit with no review or self-test keeps them only in memory.
    */
-  keepSession(id: string | undefined): Promise<void>;
+  keepSession(id: string | undefined, tools?: readonly string[]): Promise<void>;
   /**
    * Writes the tutor's request to install packages into the position. It is
    * kept across moves, as the session's id is.
@@ -772,6 +772,8 @@ export async function openUnitRecord(options: {
       if (id === sessionId) return;
       const was = { id: sessionId, tools: sessionTools };
       sessionId = id;
+      sessionTools =
+        id === undefined || tools === undefined ? undefined : [...tools];
       if (finished !== undefined && position.assessment === undefined) {
         position = closedPosition();
         return;

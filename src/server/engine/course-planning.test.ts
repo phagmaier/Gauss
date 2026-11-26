@@ -924,6 +924,72 @@ test("Codex notes that the thread cannot read a source, not yet delivered, give 
   expect(fresh?.systemPrompt).toContain('(source id "counting-2")');
 });
 
+/** Reopens the unit in chats made after a restart. */
+async function reopen(units: UnitChats, unit: string) {
+  const opened = await units.open(COURSE, unit);
+  if (!opened.ok) throw new Error(opened.error);
+  await opened.chat.settled();
+  return opened.chat;
+}
+
+test.each([
+  { backend: "Codex", codex: true, resumes: false },
+  { backend: "Claude", codex: false, resumes: true },
+])(
+  "a unit begun in a course with no source, reopened after a restart once the course has one, reads it: a $backend tutor's conversation resumed: $resumes",
+  async ({ codex, resumes }) => {
+    const { planning, open, units, tutorBackend, restart } = await setUp({
+      codex,
+      planner: [[amend([LOOPS, SETS, mapsReading("counting/s1")])]],
+      tutor: [[{ text: "Loops, then." }]],
+    });
+    const before = await open("loops");
+    const began = tutorBackend.ids[0];
+    await applyNewSource(planning);
+    await before.settled();
+    await units.close();
+
+    const after = restart([[{ text: "Now I can." }]]);
+    const loops = await reopen(after.units, "loops");
+    loops.say("Is there anything to read now?");
+    await loops.settled();
+
+    const { sessions, received } = after.tutorBackend;
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.resumeId).toBe(resumes ? began : undefined);
+    expect(sessions[0]?.systemPrompt).toContain('(source id "counting")');
+    expect(toolNames(sessions[0])).toContain("read_section");
+    expect(loops.events().filter((e) => e.type === "fresh_start")).toEqual(
+      resumes ? [] : [{ type: "fresh_start", reason: "tools" }],
+    );
+    expect(received[0]?.text.includes(JOINED_NOTE)).toBe(!resumes);
+  },
+);
+
+test("a Codex thread that began with a source, reopened after a restart once a second source joins, resumes with both", async () => {
+  const { planning, open, units, tutorBackend, restart } = await setUp({
+    codex: true,
+    source: true,
+    planner: [[amend([...READING.units, mapsReading(`${ADDED}/s1`)])]],
+    tutor: [[{ text: "Loops, then." }]],
+  });
+  const before = await open("loops");
+  await applyNewSource(planning);
+  await before.settled();
+  await units.close();
+
+  const after = restart([[{ text: "Both, then." }]]);
+  const loops = await reopen(after.units, "loops");
+  loops.say("Anything new?");
+  await loops.settled();
+
+  const [session] = after.tutorBackend.sessions;
+  expect(session?.resumeId).toBe(tutorBackend.ids[0]);
+  expect(session?.systemPrompt).toContain('(source id "counting")');
+  expect(session?.systemPrompt).toContain(`(source id "${ADDED}")`);
+  expect(loops.events().some((e) => e.type === "fresh_start")).toBe(false);
+});
+
 test("a change that drops a started unit, changes its id or nothing, or breaks the curriculum's rules, is refused with the reason and shows no card", async () => {
   const { backend, planning, stored } = await setUp({
     finished: true,
