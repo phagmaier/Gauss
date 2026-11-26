@@ -206,7 +206,10 @@ Rules no single file shows:
   `SourcePane`), its logic in a tested pure module beside it (`session.ts`,
   `progress.ts`, `diagram.ts`, ...); the thread's timeline is
   `src/shared/timeline.ts`. `attach.tsx` holds attaching a source, shared
-  by the intake and the planning conversation.
+  by the intake and the planning conversation, and the drop on a page;
+  `Photos.tsx` the photos of a unit's messages: those waiting in the
+  message box (their logic in `photo-tray.ts`), in the thread, and one
+  opened over the page.
   `prose.tsx` renders model and learner text as React elements, never
   HTML. `styles.css`: colours as named roles in one block, type registers
   near the top. CMU Serif is in `fonts/`; IBM Plex comes from Google Fonts.

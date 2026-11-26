@@ -133,6 +133,19 @@ const dateTime = new Intl.DateTimeFormat(undefined, {
 });
 const date = new Intl.DateTimeFormat(undefined, { dateStyle: "long" });
 
+/** The photos the transcripts' messages carry, each once, as the export needs them. */
+export function transcriptPhotos(transcripts: readonly Transcript[]): string[] {
+  const photos = new Set<string>();
+  for (const { events } of transcripts) {
+    for (const event of events) {
+      if (event.type === "learner") {
+        for (const photo of event.photos ?? []) photos.add(photo);
+      }
+    }
+  }
+  return [...photos];
+}
+
 /** Replay across sessions first: later events can update earlier cards. */
 export function renderTranscript(
   course: string,
@@ -143,6 +156,11 @@ export function renderTranscript(
   sources: readonly Outline[],
   /** The course's units, whose plans state an objective a review passed over. */
   courseUnits: readonly StoredUnit[],
+  /**
+   * The messages' photos as JPEG bytes, by id (`transcriptPhotos`), embedded
+   * as data URLs so that the file opens alone; one missing is said to be.
+   */
+  photos: ReadonlyMap<string, Buffer>,
 ): string {
   let thread = emptyTimeline;
   let index = 0;
@@ -229,6 +247,7 @@ export function renderTranscript(
           courseObjectives,
           sources,
           tutorMarkdown,
+          photos,
         ),
       );
       at += 1;
@@ -264,18 +283,30 @@ function renderItem(
   courseObjectives: ReadonlyMap<string, string>,
   sources: readonly Outline[],
   tutorMarkdown: typeof markdown,
+  photos: ReadonlyMap<string, Buffer>,
 ): string {
   switch (item.kind) {
-    case "learner":
-      return `<div class="learner" aria-label="Learner">${messageParts(
-        item.text,
-      )
+    case "learner": {
+      const shown = item.photos ?? [];
+      const images = shown.map((photo, i) => {
+        const data = photos.get(photo);
+        const alt = `Photo ${i + 1} of ${shown.length}`;
+        return data === undefined
+          ? `<span class="note">${alt} could not be read.</span>`
+          : `<img src="data:image/jpeg;base64,${data.toString("base64")}" alt="${alt}">`;
+      });
+      return `<div class="learner" aria-label="Learner">${
+        images.length === 0
+          ? ""
+          : `<div class="photos">${images.join("")}</div>`
+      }${messageParts(item.text)
         .map((part) =>
           part.quote
             ? `<blockquote>${String(learnerMarkdown.processSync(part.text))}</blockquote>`
             : escapeHtml(part.text),
         )
         .join("")}</div>`;
+    }
     case "tutor":
       return `<div class="tutor" aria-label="Tutor">${String(tutorMarkdown.processSync(item.text))}</div>`;
     case "phase":
@@ -649,6 +680,9 @@ header h1{font-size:2em;line-height:1.15;margin:0 0 .3em;font-weight:600}
 .learner blockquote{white-space:normal;margin-block:.15em .5em}
 .learner blockquote p{margin:0 0 .5em}
 .learner blockquote p:last-child{margin-bottom:0}
+.learner .photos{display:flex;flex-wrap:wrap;gap:.4em;margin:.3em 0 .45em;white-space:normal}
+.learner .photos:last-child{margin-bottom:.3em}
+.learner .photos img{display:block;max-width:100%;max-height:30em;border-radius:8px}
 .tutor{margin:1em 0}
 .tutor :is(h1,h2,h3,h4,h5,h6){color:var(--accent);font-size:1.2em;line-height:1.3;border:0;padding:0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:1.4em 0;padding:1em 1.2em}

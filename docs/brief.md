@@ -495,6 +495,13 @@ what it tried and what was turned down. Beyond them:
 - **Planning**: a source is attached as in the intake (piece 26, direction
   A). Its card says it joins when a change is applied, and the change card
   lists the sources it adds.
+- **Photos**: attached in a unit's message box (piece 28, direction A,
+  the user's choice, 2026-11-25), by the clip, a paste or a drop on the
+  thread. Each waits as a small square inside the box, above the text,
+  with a cross to remove it; a refused one says why under the squares
+  and is not sent. In the thread a message's photos sit in its bubble,
+  above its text, and one opens over the whole page with the message's
+  other photos beside it.
 - **Settings**: one app-wide page, opened by "Settings" beside "Profile"
   in the library's top line (piece 25, direction A). Picking a model
   saves it at once. The instructions box works as the Profile page's,

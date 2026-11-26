@@ -16,6 +16,9 @@ export const PHOTO_SIZE_LIMIT = 20 * 1024 * 1024;
 /** The most photos one message takes. */
 export const PHOTOS_PER_MESSAGE = 4;
 
+/** Why a message with more photos is refused, by the server or the page. */
+export const TOO_MANY_PHOTOS = `A message takes at most ${PHOTOS_PER_MESSAGE} photos.`;
+
 /** "1 photo", "2 photos": how the models are told a message's photos. */
 export function photoCount(photos: number): string {
   return photos === 1 ? "1 photo" : `${photos} photos`;

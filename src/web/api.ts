@@ -81,6 +81,20 @@ export async function post(
   return answer.ok ? undefined : answer.error;
 }
 
+/** Posts a file as the body, its name in a header, and reads the answer. */
+export function postFileFor<T>(
+  path: string,
+  file: File,
+  nameHeader: string,
+  schema: z.ZodType<T>,
+): Promise<Answer<T>> {
+  return request(path, schema, {
+    method: "POST",
+    headers: { [nameHeader]: encodeURIComponent(file.name) },
+    body: file,
+  }) as Promise<Answer<T>>;
+}
+
 export type UploadAnswer =
   | { ok: true; attachment: string }
   | { ok: false; error: string; shown: boolean };

@@ -49,62 +49,28 @@ matches with a cheap model, if the learner's use shows local search leaves
 too many plausible matches. Each is planned when chosen.
 
 Photos in messages (6.27 to 6.29): `brief.md`, "Other features",
-"Photos"; piece 28, which 6.29 mocks. A photo goes to the tutor inside
-the learner's turn. A tool the tutor would have to call is not used,
-because a tutor sent to a page image looked at it only when asked (the C
-gap on `tutor.md`'s garbled page, below). No shipped prompt text is
-reworded. The words telling the tutor and the help judge that a message
-has photos are new model-facing text, first read by a real model in the
-user check, as is a user turn's image on either backend.
+"Photos"; piece 28. A photo goes to the tutor inside the learner's turn.
+A tool the tutor would have to call is not used, because a tutor sent to
+a page image looked at it only when asked (the C gap on `tutor.md`'s
+garbled page, below). No shipped prompt text is reworded. The words
+telling the tutor and the help judge that a message has photos are new
+model-facing text, first read by a real model in the user check, as is a
+user turn's image on either backend.
 
-### 6.29 Photos on the page — todo
-
-**Needs:** the user's pick of a direction for piece 28.
-**Why:** The composer (`web/Composer.tsx`) sends text alone, though the
-routes take photos (`POST …/units/:unit/photos`, and `UnitMessage`'s
-`photos`). Neither the thread's learner item (`shared/timeline.ts`) nor
-the exported transcript (`engine/transcript-html.ts`) shows photos.
-**Do:** First mock piece 28 in `docs/prototype/` in two or three
-directions, add it to `index.html`, and ask the user to pick one. It
-covers attaching in the composer (picker, paste and drop, thumbnails with
-Remove, and a refusal), a message with photos in the thread, and a photo
-opened at full size. Record the pick in `brief.md`, "Page", and the
-rejected directions in the piece's header.
-
-Then build the pick:
-- Each photo is staged when attached, and Send waits until staging ends.
-  A refusal shows beside its photo. There are at most four photos.
-- The thread shows a message's photos, served by a new GET route under
-  the unit that serves only that course's photos, and opens one at full
-  size.
-- The exported transcript embeds them as data URLs: its policy allows
-  `img-src data:`.
-**Done when:** in Chromium on `pnpm dev:fake` with a fresh root, in
-"Calculus I", unit 1:
-- attach a photo with the picker and paste a second, remove one, and
-  send the message with text: the thread shows the photo, and the
-  scripted tutor says it sees one;
-- a photo is sent with no text;
-- a `.heic` file and a fifth photo are refused with their reasons;
-- a photo sent while a question is open is taken;
-- after a server restart, the unit shows the photos again;
-- the exported transcript, opened from disk, shows them.
-
-The page reads as the picked direction. `mise run check` passes.
-
-User check for photos, after 6.29. First, on `pnpm dev:fake` with a fresh
-root, open "Calculus I", unit 1. Attach a photo from disk, paste a
-screenshot, remove one, and send with a line of text: the thread shows the
-photo, and the scripted tutor says it sees one. Open the photo at full
-size. Try a HEIC file and a fifth photo: each is refused with its reason.
-Press "Ready", send a photo while the check question is open, then answer
-it. Restart the server: the photos are still in the thread. Export the
-transcript and open it from disk: the photos are in it. Then, on `pnpm
-check:live` with a fresh root (a real model, run when you do this check),
-start a small course on Claude and another on Codex. In each, photograph
-a page of handwritten working with one deliberate slip, send it with
-"Where did I go wrong?", and see whether the tutor reads the working and
-finds the slip.
+User check for photos. First, on `pnpm dev:fake` with a fresh root, open
+"Calculus I", unit 1. Attach a photo from disk, paste a screenshot,
+remove one, and send with a line of text: the thread shows the photo, and
+the scripted tutor says it sees one. Open the photo at full size. Try a
+HEIC file and a fifth photo: each is refused with its reason. Unit 1 is
+finished in the seed, so open unit 5, "The integral": press "I'm ready
+for the check", send a photo while the check question is open, then
+answer it. Restart the server: the photos are still in unit 1's thread.
+Export its transcript and open it from disk: the photos are in it. Then,
+on `pnpm check:live` with a fresh root (a real model, run when you do
+this check), start a small course on Claude and another on Codex. In
+each, photograph a page of handwritten working with one deliberate slip,
+send it with "Where did I go wrong?", and see whether the tutor reads the
+working and finds the slip.
 
 ## Known gaps
 

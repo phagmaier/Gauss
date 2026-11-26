@@ -47,7 +47,7 @@ import {
 } from "../../shared/library.ts";
 import { NotesPost } from "../../shared/notes.ts";
 import { PackagesAnswer } from "../../shared/packages.ts";
-import type { PhotoStaged } from "../../shared/photo.ts";
+import { PhotoId, type PhotoStaged } from "../../shared/photo.ts";
 import {
   ProfilePost,
   type ProfileSaved,
@@ -95,7 +95,10 @@ import {
   type SourceConverter,
 } from "../engine/source-convert.ts";
 import { STANDALONE_HTML_POLICY } from "../engine/standalone-html.ts";
-import { renderTranscript } from "../engine/transcript-html.ts";
+import {
+  renderTranscript,
+  transcriptPhotos,
+} from "../engine/transcript-html.ts";
 import type { UnitChat, UnitChats } from "../engine/unit-chat.ts";
 import type { FileOpener } from "../open-file.ts";
 import type { Backup } from "../record/backup.ts";
@@ -774,6 +777,11 @@ export function createApp(options: {
       dataRoot.readTranscripts(id, entry.id),
       dataRoot.readSources(id),
     ]);
+    const photos = new Map<string, Buffer>();
+    for (const photo of transcriptPhotos(sessions)) {
+      const image = await dataRoot.readPhoto(id, photo);
+      if (image !== undefined) photos.set(photo, image);
+    }
     return c.html(
       renderTranscript(
         stored.course.title,
@@ -782,6 +790,7 @@ export function createApp(options: {
         sessions,
         sources,
         curriculum.units,
+        photos,
       ),
       200,
       {
@@ -940,6 +949,32 @@ export function createApp(options: {
         : c.json({ error: staged.error }, staged.status);
     }),
   );
+
+  // A photo a message of this course carries, for the thread. Only the
+  // course's own photos/ is read, so another course's photo, or one staged
+  // and never sent, is not found. The unit need not be open: the thread
+  // asks for its photos while the unit reopens after a restart.
+  app.get(`${unitPath}/photos/:photo`, async (c) => {
+    const { id, unit, photo } = c.req.param();
+    const curriculum = (await dataRoot.readCourse(id))?.curriculum;
+    const parsed = PhotoId.safeParse(photo);
+    if (
+      curriculum == null ||
+      !curriculum.units.some((entry) => entry.id === unit) ||
+      !parsed.success
+    ) {
+      return c.json({ error: "No such photo." }, 404);
+    }
+    const image = await dataRoot.readPhoto(id, parsed.data);
+    return image === undefined
+      ? c.json({ error: "No such photo." }, 404)
+      : c.body(image, 200, {
+          "Content-Type": "image/jpeg",
+          "X-Content-Type-Options": "nosniff",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Cache-Control": "no-store",
+        });
+  });
 
   app.post(
     `${unitPath}/messages`,

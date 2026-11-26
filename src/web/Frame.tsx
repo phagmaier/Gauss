@@ -53,7 +53,7 @@ export function TopLine(props: {
   );
 }
 
-const CLOSE_ICON = (
+export const CLOSE_ICON = (
   <svg
     width="14"
     height="14"

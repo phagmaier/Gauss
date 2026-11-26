@@ -264,7 +264,14 @@ export interface CurriculumItem {
 }
 
 export type Item =
-  | { kind: "learner"; key: number; id?: string; text: string }
+  | {
+      kind: "learner";
+      key: number;
+      id?: string;
+      text: string;
+      /** The photos it carries, by id, in order (`photos` on its event). */
+      photos?: string[];
+    }
   | { kind: "tutor"; key: number; text: string }
   /** A file the tutor wrote, by its path in the workspace (task 3.3, piece 14). */
   | { kind: "file"; key: number; path: string }
@@ -671,6 +678,7 @@ export function reduce(state: Timeline, action: TimelineAction): Timeline {
             key: index,
             text: event.text,
             ...(event.id === undefined ? {} : { id: event.id }),
+            ...(event.photos === undefined ? {} : { photos: event.photos }),
           },
         ],
         tutorOpen: false,

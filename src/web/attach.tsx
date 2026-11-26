@@ -1,12 +1,13 @@
 // Attaching a source in a conversation with a planner: the intake's (piece
 // 22) and a planning conversation's (piece 26). The files being sent and
-// converted, which Send waits for; a file dropped on the page; and the
-// outline of a file attached before a course's collection of outlines
-// holds it.
+// converted, which Send waits for; a file dropped on the page, a unit's
+// photos too (piece 28); and the outline of a file attached before a
+// course's collection of outlines holds it.
 
 import { type DragEvent, useEffect, useReducer, useRef, useState } from "react";
 import type { Unit } from "../shared/curriculum.ts";
 import { FILE_NAME_HEADER } from "../shared/events.ts";
+import { PHOTOS_PER_MESSAGE } from "../shared/photo.ts";
 import { formatBytes, Outline, SOURCE_SIZE_LIMIT } from "../shared/source.ts";
 import type { SourceTarget } from "../shared/source-target.ts";
 import type { Item } from "../shared/timeline.ts";
@@ -149,14 +150,24 @@ export function useFileDrop(open: boolean, attach: (file: File) => void) {
   };
 }
 
-/** Shown over the page while a file is held over it. */
-export function DropHint() {
+/** Shown over the page while a file is held over it: a source, or a unit's photos. */
+export function DropHint(props: { photos?: boolean }) {
   return (
     <div className="drop">
-      <div className="drop-t">Drop the file to attach it</div>
+      <div className="drop-t">
+        {props.photos === true
+          ? "Drop the photos to attach them"
+          : "Drop the file to attach it"}
+      </div>
       <p className="drop-p">
-        PDF, EPUB, plain text or Markdown, up to{" "}
-        {formatBytes(SOURCE_SIZE_LIMIT)}
+        {props.photos === true ? (
+          <>JPEG, PNG or WebP, up to {PHOTOS_PER_MESSAGE} to a message</>
+        ) : (
+          <>
+            PDF, EPUB, plain text or Markdown, up to{" "}
+            {formatBytes(SOURCE_SIZE_LIMIT)}
+          </>
+        )}
       </p>
     </div>
   );

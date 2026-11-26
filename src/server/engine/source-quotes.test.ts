@@ -420,6 +420,7 @@ test("a source lecture publishes only verified blocks, in order through replay a
       await root.readTranscripts(id, "preface"),
       [BOOK],
       [],
+      new Map(),
     );
     expect(html).toMatch(
       /Start with the claim\.[\s\S]*<blockquote>The true is the whole\.<\/blockquote>[\s\S]*The first sentence sets the standard\.[\s\S]*<blockquote>it is essentially a result\.<\/blockquote>[\s\S]*The second says that the standard takes time to reach\./,
@@ -1047,6 +1048,7 @@ test("the exported transcript gives a section link's words with its section and 
     await root.readTranscripts(id, "preface"),
     [BOOK],
     [],
+    new Map(),
   );
   expect(html).toContain(
     '<span>the whole <span class="note">(Preface (part 1 of 2), p. 9)</span></span>',
@@ -1105,6 +1107,7 @@ test("the exported transcript states an objective passed over from another unit'
         },
       },
     ],
+    new Map(),
   );
   expect(html).toContain(
     '<p class="marker"><b>Passed over</b>: Say how <em>knowing</em> tests itself. No kind of question picked fits it, the tutor says: Only &lt;code&gt; questions were picked. Nothing is recorded.</p>',

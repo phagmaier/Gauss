@@ -12,6 +12,8 @@
 // artifact the tutor shows opens in the side pane, and its reference in the
 // thread opens and closes it (05-side-pane.html); "Course map" in the top line
 // opens the curriculum diagram there instead, this unit marked (piece 19).
+// Photos attached by the clip, a paste or a drop wait in the message box,
+// sit in the learner's bubble once sent, and open over the page (piece 28).
 // Review is offered on a card
 // in the thread, which becomes a marker once started or skipped, and its
 // questions carry their place in it (15-review.html). The test before a unit
@@ -90,6 +92,7 @@ import {
 } from "../shared/timeline.ts";
 import { ArtifactPane } from "./ArtifactPane.tsx";
 import { getJsonUntilAnswered, post, postFor } from "./api.ts";
+import { DropHint, useFileDrop } from "./attach.tsx";
 import { Composer, type ComposerHandle } from "./Composer.tsx";
 import { Diagram } from "./Curriculum.tsx";
 import { CurriculumCard } from "./CurriculumCard.tsx";
@@ -97,6 +100,7 @@ import { type DisputeApi, disputeApi } from "./Dispute.tsx";
 import { CourseMapButton, Link, SidePane, TopLine } from "./Frame.tsx";
 import { NotesOffer } from "./Notes.tsx";
 import { PackagesCard } from "./PackagesCard.tsx";
+import { MessagePhotos, PhotoView, usePhotoTray } from "./Photos.tsx";
 import { mapMark } from "./progress.ts";
 import { InlineProse, Prose, SourceLinks } from "./prose.tsx";
 import { QuestionCard } from "./QuestionCard.tsx";
@@ -243,6 +247,16 @@ export function Session(props: { courseId: string; unitId: string }) {
     [courseId, unitId],
   );
   const disputes = useMemo(() => disputeApi(courseId), [courseId]);
+  const tray = usePhotoTray(path("photos"));
+  /** The message's photos opened over the page, and which of them is shown. */
+  const [viewing, setViewing] = useState<{
+    photos: readonly string[];
+    at: number;
+  }>();
+  const photoUrl = useCallback(
+    (photo: string) => path(`photos/${enc(photo)}`),
+    [path],
+  );
 
   // The course's details name the unit and the one to start next. A failure to
   // load them is asked again until the server answers, so it never leaves
@@ -402,6 +416,9 @@ export function Session(props: { courseId: string; unitId: string }) {
   );
   const step = nextStep(timeline);
   const open = timeline.position !== null || timeline.finished !== null;
+  const drop = useFileDrop(open && timeline.failed === null, (file) =>
+    tray.attach([file]),
+  );
   const parts = conversations(timeline.items);
   const { sources, problem: sourceProblem } = useCourseSources(
     courseId,
@@ -489,7 +506,10 @@ export function Session(props: { courseId: string; unitId: string }) {
   );
 
   return (
-    <div className={pane === undefined ? "th has-top" : "th has-top has-pane"}>
+    <div
+      className={pane === undefined ? "th has-top" : "th has-top has-pane"}
+      {...drop.handlers}
+    >
       <TopLine
         trail={[
           { label: "Library", to: paths.library },
@@ -566,6 +586,8 @@ export function Session(props: { courseId: string; unitId: string }) {
                     {divided(before, item) ? <hr className="th-sep" /> : null}
                     <ThreadItem
                       item={item}
+                      photoUrl={photoUrl}
+                      onPhoto={(photos, at) => setViewing({ photos, at })}
                       reader={reader}
                       heading={
                         item.kind === "phase" && plan !== null
@@ -783,9 +805,13 @@ export function Session(props: { courseId: string; unitId: string }) {
           enabled={open && timeline.failed === null}
           busy={busy}
           placeholder="Message the tutor"
+          photos={tray}
           onSend={async (text) => {
-            // A refused message stays in the box, and the reason shows.
-            const why = await post(path("messages"), { text });
+            // A refused message stays in the box, its photos too, and the
+            // reason shows.
+            const why = await tray.send(text, (message) =>
+              post(path("messages"), message),
+            );
             setProblem(why);
             return why;
           }}
@@ -852,6 +878,16 @@ export function Session(props: { courseId: string; unitId: string }) {
             marks={compareUnits(pane.was, pane.units).marks}
           />
         </SidePane>
+      )}
+      {drop.dragging ? <DropHint photos /> : null}
+      {viewing === undefined ? null : (
+        <PhotoView
+          photos={viewing.photos}
+          at={viewing.at}
+          url={photoUrl}
+          onMove={(at) => setViewing({ ...viewing, at })}
+          onClose={() => setViewing(undefined)}
+        />
       )}
     </div>
   );
@@ -1095,6 +1131,10 @@ function Outline(props: {
 
 function ThreadItem(props: {
   item: Item;
+  /** Where a message's photo is served from. */
+  photoUrl(photo: string): string;
+  /** Opens a message's photos over the page, at the one picked. */
+  onPhoto(photos: readonly string[], at: number): void;
   /** The heading of the segment this phase begins, if it begins one. */
   heading: SegmentHeading | undefined;
   /** The heading is the one the outline just jumped to. */
@@ -1156,7 +1196,20 @@ function ThreadItem(props: {
   const { item } = props;
   switch (item.kind) {
     case "learner":
-      return <LearnerMessage text={item.text} />;
+      return (
+        <LearnerMessage
+          text={item.text}
+          photos={
+            item.photos === undefined ? null : (
+              <MessagePhotos
+                photos={item.photos}
+                url={props.photoUrl}
+                onOpen={(at) => props.onPhoto(item.photos ?? [], at)}
+              />
+            )
+          }
+        />
+      );
     case "tutor":
       return (
         <div className="th-tutor prose">
@@ -1456,9 +1509,10 @@ function ThreadItem(props: {
  * A learner's message: their own text as typed, and a passage they quoted
  * (piece 19) as a quote, set as the tutor's text was.
  */
-function LearnerMessage(props: { text: string }) {
+function LearnerMessage(props: { text: string; photos?: ReactNode }) {
   return (
     <div className="th-you">
+      {props.photos}
       {messageParts(props.text).map((part, i) =>
         part.quote ? (
           // biome-ignore lint/suspicious/noArrayIndexKey: a message's parts never move

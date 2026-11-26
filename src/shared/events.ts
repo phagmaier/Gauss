@@ -9,7 +9,7 @@ import { CurriculumChangeOutcome } from "./curriculum-change.ts";
 import { ShownDispute } from "./dispute.ts";
 import { AssessmentMode } from "./evidence.ts";
 import { PackageSpec, PackagesOutcome } from "./packages.ts";
-import { PHOTOS_PER_MESSAGE, PhotoId } from "./photo.ts";
+import { PHOTOS_PER_MESSAGE, PhotoId, TOO_MANY_PHOTOS } from "./photo.ts";
 import { Plan } from "./plan.ts";
 import {
   AnswerSubmission,
@@ -672,10 +672,7 @@ export const UnitMessage = z
     text: z.string().trim().max(20_000),
     photos: z
       .array(PhotoId)
-      .max(
-        PHOTOS_PER_MESSAGE,
-        `A message takes at most ${PHOTOS_PER_MESSAGE} photos.`,
-      )
+      .max(PHOTOS_PER_MESSAGE, TOO_MANY_PHOTOS)
       .refine(
         (photos) => new Set(photos).size === photos.length,
         "A message names each photo once.",

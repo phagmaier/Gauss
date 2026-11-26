@@ -570,3 +570,101 @@ test("after a restart, reopening the unit replays the message with its photos, a
     await after.units.close();
   }
 });
+
+test("the thread's photo route serves a sent photo as its JPEG, and finds none for another course, a photo staged and not sent, or an id that is not a photo's", async () => {
+  const setup = setUp([
+    [{ text: "A map is fixed by a basis." }],
+    [{ text: "I see it." }],
+  ]);
+  await approvedCourse();
+  // Another course with a unit of the same id, which kept no photos.
+  const root = openDataRoot({ path: dir });
+  const other = {
+    title: "Geometry",
+    units: [
+      {
+        id: "vectors",
+        title: "Vectors",
+        goal: "Add vectors.",
+        prerequisites: [],
+      },
+    ],
+    style: "Short.",
+    background: "None.",
+  };
+  const { id: otherId } = await root.createCourse({ title: other.title });
+  await root.saveProposal(otherId, other);
+  await root.approveCurriculum(otherId, other);
+  try {
+    await openUnit(setup);
+    const sent = await stage(setup, GREY, "grey.png");
+    expect(
+      (await post(setup, "/messages", { text: "", photos: [sent] })).status,
+    ).toBe(202);
+    await settle(setup);
+    const waiting = await stage(setup, RED, "red.png");
+
+    const served = await setup.app.request(`${UNIT}/photos/${sent}`);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/jpeg");
+    expect(served.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(Buffer.from(await served.arrayBuffer())).toEqual(
+      await setup.dataRoot.readPhoto(COURSE, sent),
+    );
+
+    for (const path of [
+      `/api/courses/${otherId}/units/vectors/photos/${sent}`,
+      `${UNIT}/photos/${waiting}`,
+      `${UNIT}/photos/..%2F..%2Fcourse.json`,
+      `/api/courses/${COURSE}/units/missing/photos/${sent}`,
+    ]) {
+      const refused = await setup.app.request(path);
+      expect(refused.status, path).toBe(404);
+      expect(await refused.json()).toEqual({ error: "No such photo." });
+    }
+  } finally {
+    await setup.units.close();
+  }
+});
+
+test("the exported transcript embeds a message's photos as data URLs, which its policy allows and nothing wider", async () => {
+  const setup = setUp([
+    [{ text: "A map is fixed by a basis." }],
+    [{ text: "I see them." }],
+  ]);
+  await approvedCourse();
+  try {
+    await openUnit(setup);
+    const grey = await stage(setup, GREY, "grey.png");
+    const red = await stage(setup, RED, "red.png");
+    expect(
+      (
+        await post(setup, "/messages", {
+          text: "My working.",
+          photos: [grey, red],
+        })
+      ).status,
+    ).toBe(202);
+    await settle(setup);
+
+    const response = await setup.app.request(`${UNIT}/transcript`);
+    expect(response.status).toBe(200);
+    const policy = response.headers.get("content-security-policy") ?? "";
+    expect(policy).toContain("img-src data:;");
+    const html = await response.text();
+    const images = await kept(setup, [grey, red]);
+    expect(html).toContain(
+      `<div class="learner" aria-label="Learner"><div class="photos">` +
+        `<img src="data:image/jpeg;base64,${images[0]?.data.toString("base64")}" alt="Photo 1 of 2">` +
+        `<img src="data:image/jpeg;base64,${images[1]?.data.toString("base64")}" alt="Photo 2 of 2">` +
+        `</div>My working.</div>`,
+    );
+    // The file's own policy, which holds when it is opened from disk.
+    expect(html).toMatch(
+      /<meta http-equiv="Content-Security-Policy" content="[^"]*img-src data:;/,
+    );
+    expect(html).not.toContain(`/photos/${grey}`);
+  } finally {
+    await setup.units.close();
+  }
+});

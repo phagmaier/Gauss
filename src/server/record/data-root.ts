@@ -443,7 +443,10 @@ export interface DataRoot {
    * A photo kept in the course, as its JPEG's bytes; undefined if there is
    * none. Throws for a name that cannot be a photo's id.
    */
-  readPhoto(id: string, photo: string): Promise<Buffer | undefined>;
+  readPhoto(
+    id: string,
+    photo: string,
+  ): Promise<Buffer<ArrayBuffer> | undefined>;
   /**
    * Removes the temporary files of whole-file writes a crash interrupted
    * (`isTemporaryName`): plain files only, and only in these of the

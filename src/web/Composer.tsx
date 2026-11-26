@@ -4,7 +4,10 @@
 // (task 0.8). A quoted passage (piece 19) and an aid's question go after the
 // draft; neither is sent until the learner sends it. In the intake, a clip
 // first in the box attaches a source (piece 22), and Send waits while a file
-// converts, so that the planner's turn has its outline.
+// converts, so that the planner's turn has its outline. In a unit, the clip
+// or a paste attaches photos (piece 28): they wait as squares above the
+// text, Send waits while one is taken in, and a message of photos alone
+// can be sent.
 
 import {
   type Ref,
@@ -16,6 +19,8 @@ import {
 import { flushSync } from "react-dom";
 import { withQuote } from "../shared/quote.ts";
 import { withAsk } from "./artifact.ts";
+import { PHOTO_TYPES, PhotoSquares, type PhotoTray } from "./Photos.tsx";
+import { photosToSend, stagingPhotos } from "./photo-tray.ts";
 
 const SEND_ICON = (
   <svg
@@ -74,12 +79,37 @@ export function Composer(props: {
   onAttach?(file: File): void;
   /** Send waits: a file is being converted. */
   holdSend?: boolean;
+  /** Given, the box takes photos for the message instead (piece 28). */
+  photos?: PhotoTray;
   ref?: Ref<ComposerHandle>;
 }) {
   const [text, setText] = useState("");
   const picker = useRef<HTMLInputElement>(null);
-  const { onAttach } = props;
-  const holding = props.holdSend === true;
+  const { onAttach, photos } = props;
+  const holding =
+    props.holdSend === true ||
+    (photos !== undefined && stagingPhotos(photos.waiting));
+  const withPhotos =
+    photos !== undefined && photosToSend(photos.waiting).length > 0;
+  const clip =
+    photos !== undefined
+      ? {
+          label: "Attach photos: JPEG, PNG or WebP",
+          accept: PHOTO_TYPES,
+          multiple: true,
+          take: photos.attach,
+        }
+      : onAttach !== undefined
+        ? {
+            label: "Attach a source: PDF, EPUB, text or Markdown",
+            accept: SOURCE_TYPES,
+            multiple: false,
+            take: (files: File[]) => {
+              const file = files[0];
+              if (file !== undefined) onAttach(file);
+            },
+          }
+        : undefined;
   const [sending, setSending] = useState(false);
   const sendPending = useRef(false);
   const draftRevision = useRef(0);
@@ -114,7 +144,7 @@ export function Composer(props: {
   async function submit() {
     const message = text.trim();
     if (
-      message === "" ||
+      (message === "" && !withPhotos) ||
       sendPending.current ||
       props.busy ||
       !props.enabled ||
@@ -139,19 +169,28 @@ export function Composer(props: {
 
   return (
     <form
-      className="box"
+      className={
+        photos !== undefined && photos.waiting.length > 0 ? "box tray" : "box"
+      }
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
-      {onAttach === undefined ? null : (
+      {photos === undefined ? null : (
+        <PhotoSquares
+          waiting={photos.waiting}
+          sending={sending}
+          onRemove={photos.remove}
+        />
+      )}
+      {clip === undefined ? null : (
         <>
           <button
             type="button"
             className="att"
-            aria-label="Attach a source: PDF, EPUB, text or Markdown"
-            title="Attach a source: PDF, EPUB, text or Markdown"
+            aria-label={clip.label}
+            title={clip.label}
             disabled={!props.enabled}
             onClick={() => picker.current?.click()}
           >
@@ -160,14 +199,15 @@ export function Composer(props: {
           <input
             ref={picker}
             type="file"
-            accept={SOURCE_TYPES}
+            accept={clip.accept}
+            multiple={clip.multiple}
             hidden
             onChange={(e) => {
               const input = e.currentTarget;
-              const file = input.files?.[0];
+              const files = [...(input.files ?? [])];
               // Cleared, so that the same file can be chosen again.
               input.value = "";
-              if (file !== undefined) onAttach(file);
+              clip.take(files);
             }}
           />
         </>
@@ -181,6 +221,15 @@ export function Composer(props: {
         onChange={(e) => {
           draftRevision.current += 1;
           setText(e.target.value);
+        }}
+        onPaste={(e) => {
+          // A copied image or file arrives as files, beside any text.
+          const files = [...e.clipboardData.files];
+          if (photos === undefined || !props.enabled || files.length === 0) {
+            return;
+          }
+          e.preventDefault();
+          photos.attach(files);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -203,8 +252,19 @@ export function Composer(props: {
         <button
           type="submit"
           className="send"
-          aria-label={holding ? "Send, once the conversion is done" : "Send"}
-          disabled={!props.enabled || sending || holding || text.trim() === ""}
+          aria-label={
+            !holding
+              ? "Send"
+              : photos !== undefined
+                ? "Send, once the photos are taken in"
+                : "Send, once the conversion is done"
+          }
+          disabled={
+            !props.enabled ||
+            sending ||
+            holding ||
+            (text.trim() === "" && !withPhotos)
+          }
         >
           {SEND_ICON}
         </button>

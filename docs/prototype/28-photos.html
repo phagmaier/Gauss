@@ -1,0 +1,357 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Stage 6, piece 28: photos in a unit's messages, in
+  the redesign's look (look.css).
+  SETTLED 2026-11-25: the user took direction A, as shown. Rejected: B (a
+  list over the box, larger tiles under the bubble, the photo in the side
+  pane) and C (large tiles over the box, each photo at reading width in
+  the thread, the photo in a new browser tab).
+
+  What it answers, from the user's decisions of 2026-11-25 (brief.md,
+  "Other features", "Photos"):
+  - In a unit's chat the learner attaches up to four photos (JPEG, PNG or
+    WebP) to a message, with or without text, whenever a message can be
+    sent, a question open included. Photos go in messages, never in an
+    answer: the question card takes none.
+  - A photo is attached with the clip first in the message box (the
+    picker), by pasting into the box, or by dropping it on the thread.
+  - Each photo is taken in when it is attached: Gauss strips its metadata
+    and reduces it. Send waits until every photo is in. A refused photo
+    says why beside it, and is not sent: a HEIC file ("It is a HEIC image,
+    which Gauss does not read: save it as JPEG and attach that."), a file
+    too large, a fifth photo ("A message takes at most 4 photos.").
+  - Each photo has Remove until the message is sent.
+  - The thread shows a message's photos, and one opens at full size.
+
+  The directions (the bar still switches them):
+  - A, in the box, over the page (chosen): the photos wait as small
+    squares inside the message box, above the text, each with a cross to
+    remove it; a refused one is a dashed square, its reason in a line
+    under the squares. In the thread they sit in the learner's bubble,
+    above the text, as a row of thumbnails. A photo opens over the whole
+    page, dimmed behind, with the message's other photos beside it.
+  - B, a list, in the side pane (rejected): the photos wait in a list
+    over the box, each a line with a small thumbnail, its name, its state
+    and "Remove"; a refusal's reason stands in its line. In the thread
+    they sit under the bubble, as larger tiles. A photo opens in the side
+    pane, as an artifact or a source's page does, so the tutor's text
+    stays readable beside it.
+  - C, at reading width, in a tab (rejected): the photos wait as large
+    tiles over the box, each with "Remove" under it; a refused one is a
+    tile with its reason in it. In the thread each photo stands at
+    reading width, one under another, so handwriting reads without
+    opening it. "Open at full size" opens the stored photo in a new
+    browser tab.
+
+  The same in every direction:
+  - The clip's label: "Attach photos: JPEG, PNG or WebP".
+  - A file held over the thread shows where to drop it, with the formats
+    and the limit.
+  - A message of photos alone is sent; the bubble holds only them.
+  - While a question is open, a message with a photo is judged for help
+    as any message is.
+
+  The bar at the bottom left picks the direction, the moment and the
+  theme. Keys: H hides the bar; Escape closes a photo.
+
+  Everything is simulated: the photos are drawings, the course and the
+  tutor's replies are invented. Remove works, and a photo in the thread
+  opens. The clip, paste, drop and Send do nothing here.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 28: photos in messages</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-serif.css">
+<link rel="stylesheet" href="look.css">
+<style>
+.ph-img{display:block;background:var(--sunk)}
+.why{color:var(--miss)}
+.reducing{display:flex;align-items:center;gap:.45em;color:var(--ink-3)}
+
+/* A: squares inside the box, above the text */
+.box.tray{flex-wrap:wrap}
+.tray-row{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px;padding:5px 0 4px}
+.sq{position:relative;width:64px;height:64px;border-radius:8px;border:1px solid var(--rule-2);overflow:hidden;background:var(--sunk)}
+.sq img{width:100%;height:100%;object-fit:cover}
+.sq.wait img{opacity:.45}
+.sq.wait .spin{position:absolute;left:calc(50% - 6px);top:calc(50% - 6px)}
+.sq.no{border:1.5px dashed var(--miss);display:grid;place-items:center;padding:4px;font:500 9.5px/1.2 var(--f-label);letter-spacing:.04em;color:var(--ink-3);
+  text-align:center;overflow-wrap:anywhere}
+.sq .x{position:absolute;top:3px;right:3px;width:20px;height:20px;display:grid;place-items:center;border:0;border-radius:50%;padding:0;
+  background:color-mix(in srgb,var(--sunk) 85%,transparent);color:var(--ink)}
+.sq .x:hover{background:var(--ink);color:var(--bg)}
+.tray-why{flex:1 1 100%;margin:0 0 4px;font-size:13px;color:var(--ink-2)}
+.tray-why b{font-weight:500;color:var(--ink)}
+.you .pics{display:flex;flex-wrap:wrap;gap:6px;margin:.35em 0 .45em}
+.you .pics:last-child{margin-bottom:.3em}
+.you .pics button{padding:0;border:0;border-radius:8px;overflow:hidden;background:none}
+.you .pics img{height:112px;width:auto;max-width:200px;object-fit:cover}
+.you .pics button:hover img{filter:brightness(1.08)}
+.lb{position:fixed;inset:0;z-index:50;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:color-mix(in srgb,var(--sunk) 94%,transparent)}
+.lb-h{display:flex;align-items:center;gap:1em;height:52px;padding:0 12px 0 20px;font-size:14px;color:var(--ink-2);background:var(--sunk)}
+.lb-h .tools{margin-left:auto;display:flex;gap:4px;align-items:center}
+.lb-b{min-height:0;display:grid;place-items:center;padding:0 64px;overflow:auto}
+.lb-b img{max-width:100%;max-height:calc(100dvh - 140px);object-fit:contain;border-radius:2px;box-shadow:var(--shadow)}
+.lb-b.actual{place-items:start center}
+.lb-b.actual img{max-width:none;max-height:none}
+.lb-f{display:flex;justify-content:center;gap:8px;padding:12px 0 18px}
+.lb-f button{padding:0;border:2px solid transparent;border-radius:6px;overflow:hidden;background:none}
+.lb-f button[aria-current=true]{border-color:var(--accent)}
+.lb-f img{height:48px;width:auto;opacity:.75}
+.lb-f button[aria-current=true] img{opacity:1}
+
+/* B: a list over the box; tiles under the bubble; the side pane */
+.plist{max-width:calc(var(--measure) + 24px);margin:0 auto 8px;list-style:none;padding:6px 14px;border:1px solid var(--rule);border-radius:12px;
+  display:grid;gap:2px;font-size:13.5px}
+.plist li{display:grid;grid-template-columns:36px minmax(0,1fr) auto;column-gap:.8em;align-items:center;padding:3px 0}
+.plist .th36{width:36px;height:36px;border-radius:5px;object-fit:cover;background:var(--sunk)}
+.plist .th36.no{display:grid;place-items:center;border:1px dashed var(--miss);color:var(--miss);font:500 11px var(--f-label)}
+.plist .n{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plist .m{font-size:13px;color:var(--ink-3)}
+.plist .hd{grid-column:1/-1;display:flex;gap:1em;align-items:baseline;padding:2px 0 4px}
+.plist .hd .r{margin-left:auto;font-size:13px;color:var(--ink-3)}
+.tiles{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin:1.6em 0 -1.1em auto;max-width:82%}
+.tiles+.you{margin-top:1.6em}
+.tiles button{padding:0;border:1px solid var(--rule);border-radius:12px;overflow:hidden;background:none}
+.tiles button[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 3px var(--wash)}
+.tiles img{width:210px;height:158px;object-fit:cover}
+.tiles.one img{width:300px;height:225px}
+.pane-b.ph{display:grid;place-items:center;padding:16px;background:var(--sunk)}
+.pane-b.ph img{max-width:100%;max-height:100%;object-fit:contain}
+.pane-b.ph.actual{place-items:start}
+.pane-b.ph.actual img{max-width:none;max-height:none}
+
+/* C: large tiles over the box; at reading width in the thread */
+.big{max-width:calc(var(--measure) + 24px);margin:0 auto 8px;display:flex;flex-wrap:wrap;gap:10px}
+.big figure{margin:0;width:118px;display:grid;gap:3px;font-size:12.5px;color:var(--ink-3)}
+.big .tile{position:relative;width:118px;height:118px;border-radius:10px;border:1px solid var(--rule-2);overflow:hidden;background:var(--raised)}
+.big .tile img{width:100%;height:100%;object-fit:cover}
+.big .tile.wait img{opacity:.45}
+.big .tile.wait .spin{position:absolute;left:calc(50% - 6px);top:calc(50% - 6px)}
+.big .tile.no{border:1.5px dashed var(--miss);padding:8px;font-size:12.5px;line-height:1.35;color:var(--ink-2)}
+.big figcaption{display:grid;justify-items:start;gap:1px;min-width:0}
+.big figcaption span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.big .link{font-size:12.5px}
+.wide{margin:1.6em 0 -1em auto;display:grid;justify-items:end;gap:.9em}
+.wide figure{margin:0;display:grid;justify-items:end;gap:.3em}
+.wide img{max-width:min(100%,520px);max-height:560px;border-radius:10px;border:1px solid var(--rule)}
+.wide figcaption{font-size:13px}
+.tab{position:fixed;inset:0;z-index:50;background:#0e0e0e;display:grid;grid-template-rows:auto minmax(0,1fr)}
+.tab-h{display:flex;align-items:center;gap:.8em;height:40px;padding:0 14px;background:#202124;color:#bdc1c6;font:13px system-ui,sans-serif}
+.tab-h .url{flex:1;background:#303134;border-radius:999px;padding:.35em 1em;color:#e8eaed}
+.tab-b{display:grid;place-items:center;min-height:0;overflow:auto}
+.tab-b img{max-width:100%;max-height:calc(100dvh - 40px)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="lb"></div>
+<div id="bar"></div>
+
+<script>
+/* ---------------- simulated photos: drawings, as data URLs ---------------- */
+const svgUrl = s => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
+const HAND = 'font-family="Bradley Hand, Segoe Print, Comic Sans MS, cursive" fill="#1f2d6e"';
+function paper(lines, tilt) {
+  const ruled = Array.from({length: 17}, (_, i) => `<line x1="40" x2="860" y1="${150 + i * 62}" y2="${150 + i * 62}" stroke="#b9cbe4" stroke-width="2"/>`).join('');
+  const text = lines.map(([t, x, y, size, col]) => `<text x="${x}" y="${y}" font-size="${size || 40}" ${HAND}${col ? ` style="fill:${col}"` : ''}>${t}</text>`).join('');
+  return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200" viewBox="0 0 900 1200"><rect width="900" height="1200" fill="#6b5b4a"/>
+    <g transform="rotate(${tilt} 450 600)"><rect x="40" y="30" width="820" height="1140" fill="#f6f2e7"/>${ruled}
+    <line x1="140" x2="140" y1="30" y2="1170" stroke="#e7a6a6" stroke-width="2"/>${text}</g></svg>`);
+}
+const P = {
+  work: {name: 'IMG_2041.jpg', size: '3.4 MB', url: paper([
+    ['Product rule', 170, 128, 46], ['f(x) = x² sin x', 170, 200],
+    ['f′(x) = (x²)′ sin x + x² (sin x)′', 170, 262], ['= 2x sin x + x² cos x', 250, 324],
+    ['f′(π) = 2π · 0 + π² · (−1) = −π²', 170, 410],
+    ['g(x) = x³ eˣ', 170, 530], ['g′(x) = 3x² eˣ · x³ eˣ', 170, 592], ['= 3x⁵ e²ˣ ?', 250, 654],
+    ['check with h(x) = x · x ...', 170, 780, 36, '#555']], -1.6)},
+  graph: {name: 'IMG_2043.jpg', size: '2.9 MB', url: svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900"><rect width="1200" height="900" fill="#5f6b52"/>
+    <g transform="rotate(1.2 600 450)"><rect x="60" y="40" width="1080" height="820" fill="#f7f4ec"/>
+    <path d="M160 700H1060M600 760V110" stroke="#1f2d6e" stroke-width="4" fill="none"/>
+    <path d="M300 160Q600 1240 900 160" stroke="#1f2d6e" stroke-width="5" fill="none"/>
+    <path d="M560 760L1000 260" stroke="#b03a2e" stroke-width="4" fill="none"/>
+    <circle cx="720" cy="565" r="9" fill="#b03a2e"/>
+    <text x="910" y="190" font-size="44" ${HAND}>y = x²</text>
+    <text x="760" y="610" font-size="38" ${HAND} style="fill:#b03a2e">tangent at x = 1, slope 2</text>
+    <text x="180" y="120" font-size="40" ${HAND}>sketch</text></g></svg>`)},
+  page: {name: 'Pasted image.png', size: '412 KB', url: svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640"><rect width="1200" height="640" fill="#fff"/>
+    <g font-family="Georgia, serif" fill="#111"><text x="70" y="96" font-size="40" font-weight="bold">Exercises 3.2</text>
+    <text x="70" y="190" font-size="32">13.  Differentiate f(x) = x² sin x and find f′(π).</text>
+    <text x="70" y="260" font-size="32">14.  Differentiate g(x) = x³eˣ.</text>
+    <text x="70" y="330" font-size="32">15.  Find the slope of y = x cos x at x = π/2.</text>
+    <text x="70" y="400" font-size="32">16.  Show that (x · x)′ = 2x by the product rule.</text>
+    <text x="70" y="540" font-size="24" fill="#666">Answers to odd-numbered exercises begin on page 412.</text></g></svg>`)},
+  rule: {name: 'IMG_2045.jpg', size: '3.1 MB', url: paper([
+    ['(uv)′ = u′v + uv′', 200, 200, 52], ['not u′ · v′', 200, 290, 44, '#b03a2e'], ['and not u′v′ either', 200, 352, 40]], 1.1)},
+};
+const HEIC = {name: 'IMG_2044.HEIC', size: '2.2 MB', why: 'It is a HEIC image, which Gauss does not read: save it as JPEG and attach that.'};
+const FIFTH = {name: 'IMG_2046.jpg', size: '3.0 MB', why: 'A message takes at most 4 photos.'};
+
+/* ---------------- state ---------------- */
+const st = {dir: 'a', moment: 'attaching', theme: 'frappe', open: null, actual: false, gone: []};
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const SEND = '<svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14.5v-11M4.5 8 9 3.5 13.5 8"/></svg>';
+const CLIP = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 8.6 9 14.1a3.6 3.6 0 0 1-5.1-5.1l5.8-5.8a2.4 2.4 0 0 1 3.4 3.4L7.4 12.3a1.2 1.2 0 0 1-1.7-1.7l5.2-5.2"/></svg>';
+const X = '<svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2 2l6 6M8 2 2 8"/></svg>';
+const X14 = '<svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3 3 11"/></svg>';
+const OUT = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2 5.5 6.5"/></svg>';
+
+/* What waits in the box, by moment: [photo or refusal, 'ready' | 'wait' | 'no'] */
+function waiting() {
+  const m = st.moment;
+  let list = m === 'attaching' ? [[P.work, 'ready'], [P.page, 'wait']]
+    : m === 'drop' ? [[P.work, 'ready']]
+    : m === 'refused' ? [[P.work, 'ready'], [P.graph, 'ready'], [P.page, 'ready'], [HEIC, 'no'], [P.rule, 'ready'], [FIFTH, 'no']]
+    : [];
+  return list.filter(([p]) => !st.gone.includes(p.name));
+}
+const draft = () => st.moment === 'attaching' ? 'Where did I go wrong in 14?' : st.moment === 'refused' ? 'My working for 13 to 16' : '';
+
+/* ---------------- the composer, by direction ---------------- */
+function composer() {
+  const w = waiting();
+  const holding = w.some(([, s]) => s === 'wait');
+  const att = `<button class="att" type="button" aria-label="Attach photos: JPEG, PNG or WebP" title="Attach photos: JPEG, PNG or WebP">${CLIP}</button>`;
+  const ta = `<textarea rows="1" placeholder="Message the tutor" aria-label="Message">${draft()}</textarea>`;
+  const send = `<button class="send" aria-label="${holding ? 'Send, once the photos are taken in' : 'Send'}" ${holding || (w.length === 0 && !draft()) ? 'disabled' : ''}>${SEND}</button>`;
+  if (st.dir === 'a') {
+    if (w.length === 0) return `<form class="box">${att}${ta}${send}</form>`;
+    const sq = w.map(([p, s]) => s === 'no'
+      ? `<div class="sq no" title="${p.name}: ${p.why}">${p.name}<button class="x" type="button" data-rm="${p.name}" aria-label="Remove ${p.name}">${X}</button></div>`
+      : `<div class="sq ${s === 'wait' ? 'wait' : ''}"><img src="${p.url}" alt="${p.name}">${s === 'wait' ? '<span class="spin" aria-hidden="true"></span>' : ''}<button class="x" type="button" data-rm="${p.name}" aria-label="Remove ${p.name}">${X}</button></div>`).join('');
+    const why = w.filter(([, s]) => s === 'no').map(([p]) => `<p class="tray-why"><b>${p.name}</b> was not attached. ${p.why}</p>`).join('');
+    const waitLine = holding ? '<p class="tray-why"><span class="reducing"><span class="spin" aria-hidden="true"></span>Taking in Pasted image.png. Send waits for it.</span></p>' : '';
+    return `<form class="box tray"><div class="tray-row">${sq}</div>${why}${waitLine}${att}${ta}${send}</form>`;
+  }
+  if (st.dir === 'b') {
+    let list = '';
+    if (w.length) {
+      const ok = w.filter(([, s]) => s !== 'no').length;
+      const rows = w.map(([p, s]) => `<li>${s === 'no' ? '<span class="th36 no">!</span>' : `<img class="th36" src="${p.url}" alt="">`}
+        <div><div class="n">${p.name}</div><div class="m">${s === 'no' ? `<span class="why">${p.why}</span>` : s === 'wait' ? '<span class="reducing"><span class="spin" aria-hidden="true"></span>Taking in; Send waits for it</span>' : `${p.size} · ready`}</div></div>
+        <button class="link" type="button" data-rm="${p.name}">Remove</button></li>`).join('');
+      list = `<ul class="plist"><li class="hd"><span class="lbl">Photos for this message</span><span class="r">${ok} of 4</span></li>${rows}</ul>`;
+    }
+    return `${list}<form class="box">${att}${ta}${send}</form>`;
+  }
+  let tiles = '';
+  if (w.length) {
+    tiles = `<div class="big">${w.map(([p, s]) => s === 'no'
+      ? `<figure><div class="tile no"><b class="why">Not attached.</b> ${p.why}</div><figcaption><span>${p.name}</span><button class="link" type="button" data-rm="${p.name}">Remove</button></figcaption></figure>`
+      : `<figure><div class="tile ${s === 'wait' ? 'wait' : ''}"><img src="${p.url}" alt="${p.name}">${s === 'wait' ? '<span class="spin" aria-hidden="true"></span>' : ''}</div>
+        <figcaption><span>${s === 'wait' ? 'Taking in' : p.name}</span><button class="link" type="button" data-rm="${p.name}">Remove</button></figcaption></figure>`).join('')}</div>`;
+  }
+  return `${tiles}<form class="box">${att}${ta}${send}</form>`;
+}
+
+/* ---------------- a message's photos in the thread, by direction ---------------- */
+function you(text, photos, msg) {
+  const bubble = inner => `<div class="you">${inner}</div>`;
+  if (st.dir === 'a') {
+    const pics = `<div class="pics">${photos.map((p, i) => `<button type="button" data-open="${msg}:${i}" aria-label="Open ${p.name}"><img src="${p.url}" alt="${p.name}"></button>`).join('')}</div>`;
+    return bubble(pics + (text || ''));
+  }
+  if (st.dir === 'b') {
+    const tiles = `<div class="tiles ${photos.length === 1 ? 'one' : ''}">${photos.map((p, i) => `<button type="button" data-open="${msg}:${i}" aria-label="Open ${p.name}" aria-pressed="${st.open === `${msg}:${i}`}"><img src="${p.url}" alt="${p.name}"></button>`).join('')}</div>`;
+    return tiles + (text ? bubble(text) : '<div style="height:1.6em"></div>');
+  }
+  const wide = `<div class="wide">${photos.map((p, i) => `<figure><img src="${p.url}" alt="${p.name}"><figcaption><button class="link" type="button" data-open="${msg}:${i}">Open at full size ${OUT}</button></figcaption></figure>`).join('')}</div>`;
+  return wide + (text ? bubble(text) : '<div style="height:1.6em"></div>');
+}
+const MESSAGES = {
+  m1: [P.work, P.page],
+  m2: [P.graph],
+  m3: [P.rule],
+};
+const tutor = html => `<div class="tutor read">${html}</div>`;
+
+function thread() {
+  let h = `<section class="seg"><span class="lbl">Segment 1 of 2</span><h2 class="title">Products and quotients</h2>
+    <ul class="seg-objs"><li><span class="sg now"></span>Differentiate a product with the product rule</li><li><span class="sg not"></span>Differentiate a quotient with the quotient rule</li></ul></section>
+    <div class="ph"><span class="lbl">Discuss</span></div>`;
+  h += tutor('<p>Try 13 and 14 from the exercises you have, and show me your working. A photo of the page is fine.</p>');
+  if (['attaching', 'drop', 'refused'].includes(st.moment)) return h;
+  h += you('Where did I go wrong in 14?', MESSAGES.m1, 'm1');
+  h += tutor('<p>Your 13 is right, and so is <i>f′(π) = −π²</i>. In 14 the second line multiplies the two terms: you wrote <i>3x²eˣ · x³eˣ</i>. The product rule adds them: <i>g′(x) = 3x²eˣ + x³eˣ = x²eˣ(3 + x)</i>. Your own check at the bottom, with <i>h(x) = x · x</i>, would catch it: multiplying gives <i>1 · 1 = 1</i>, not <i>2x</i>.</p>');
+  h += you('', MESSAGES.m2, 'm2');
+  h += tutor('<p>That is the tangent at <i>x = 1</i>, and its slope of 2 matches <i>(x²)′ = 2x</i>. Your parabola dips below the axis on the left; it should touch it only at the origin.</p>');
+  if (st.moment !== 'question') return h;
+  h += `<div class="ph"><span class="lbl">Check</span></div>
+    <div class="card live"><div class="card-h"><span class="lbl">Question 1</span><span class="r">Math</span></div>
+    <p class="prompt">Differentiate <i>k(x) = x² cos x</i>.</p>
+    <div class="ans"><span class="k">Your answer</span><span style="border-bottom:1px solid var(--rule-2);flex:1;min-height:1.6em"></span></div>
+    <p class="note-line" style="margin:.9em 0 0">Asking what the question means is free. A reply that helps makes your answer count as helped.</p></div>`;
+  h += you('Is this the rule I should use here, or is there a separate one for cos?', MESSAGES.m3, 'm3');
+  h += tutor('<p>It is a product of <i>x²</i> and <i>cos x</i>, so the rule on your page applies. There is no separate rule for a product with a cosine.</p>');
+  h += '<p class="note-line" style="color:var(--open)">Judged help: your answer to question 1 will not count toward passing.</p>';
+  return h;
+}
+
+/* ---------------- a photo at full size, by direction ---------------- */
+function openPhoto() {
+  if (st.open === null) return {pane: '', over: ''};
+  const [msg, i] = st.open.split(':');
+  const list = MESSAGES[msg];
+  const p = list[+i];
+  const n = `${+i + 1} of ${list.length}`;
+  if (st.dir === 'a') {
+    const strip = list.length > 1 ? `<div class="lb-f">${list.map((q, j) => `<button type="button" data-open="${msg}:${j}" aria-current="${j === +i}" aria-label="${q.name}"><img src="${q.url}" alt=""></button>`).join('')}</div>` : '<div class="lb-f"></div>';
+    return {pane: '', over: `<div class="lb" role="dialog" aria-label="${p.name}"><div class="lb-h"><span class="lbl">Your photo</span><span>${p.name}${list.length > 1 ? ` · ${n}` : ''}</span>
+      <span class="tools"><button class="pane-tb" type="button" data-act="actual" aria-pressed="${st.actual}">Actual size</button><button class="pane-x" type="button" data-act="close" aria-label="Close">${X14}</button></span></div>
+      <div class="lb-b ${st.actual ? 'actual' : ''}" data-act="close-bg"><img src="${p.url}" alt="${p.name}"></div>${strip}</div>`};
+  }
+  if (st.dir === 'b') {
+    return {pane: `<aside class="pane-side"><div class="pane-h two"><div class="stack"><span class="lbl">Your photo</span><span class="where">${p.name}${list.length > 1 ? ` · ${n} in this message` : ''}</span></div>
+      <div class="tools">${list.length > 1 ? `<button class="pane-tb" type="button" data-open="${msg}:${(+i + list.length - 1) % list.length}" aria-label="Previous photo">‹</button><button class="pane-tb" type="button" data-open="${msg}:${(+i + 1) % list.length}" aria-label="Next photo">›</button>` : ''}
+      <button class="pane-tb" type="button" data-act="actual" aria-pressed="${st.actual}">Actual size</button><button class="pane-x" type="button" data-act="close" aria-label="Close">${X14}</button></div></div>
+      <div class="pane-b ph ${st.actual ? 'actual' : ''}"><img src="${p.url}" alt="${p.name}"></div></aside>`, over: ''};
+  }
+  return {pane: '', over: `<div class="tab"><div class="tab-h"><span>New tab</span><span class="url">localhost:4330/api/courses/calculus-i/units/rules/photos/3f9c…e1.jpg</span><button class="link" style="color:#bdc1c6" type="button" data-act="close">Back to Gauss</button></div>
+    <div class="tab-b"><img src="${p.url}" alt="${p.name}"></div></div>`};
+}
+
+/* ---------------- render ---------------- */
+function render() {
+  document.documentElement.dataset.theme = st.theme;
+  const {pane, over} = openPhoto();
+  const drop = st.moment === 'drop' ? '<div class="drop"><div class="title">Drop to attach</div><p>JPEG, PNG or WebP photos, up to 4 to a message</p></div>' : '';
+  app.innerHTML = `<div class="th ${pane ? 'pane' : ''}"><header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span>
+      <a href="#">Calculus I</a><span class="sep">/</span><span class="here"><span class="t">Unit 3 · Differentiation rules</span></span></nav></header>
+    <div class="th-scroll" id="scroll"><div class="th-col">${thread()}</div></div>
+    <div class="th-foot">${composer()}</div>${pane}${drop}</div>`;
+  $('#lb').innerHTML = over;
+  const s = $('#scroll'); s.style.scrollBehavior = 'auto'; s.scrollTop = s.scrollHeight; s.style.scrollBehavior = '';
+  bar();
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-act],[data-bar],[data-rm],[data-open]');
+  if (!t) return;
+  if (t.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v; st.gone = []; st.open = st.moment === 'full' ? 'm1:0' : null; st.actual = false; render(); return; }
+  if (t.dataset.rm) { st.gone.push(t.dataset.rm); render(); return; }
+  if (t.dataset.open) { st.open = t.dataset.open; st.actual = false; render(); return; }
+  if (t.dataset.act === 'actual') { st.actual = !st.actual; render(); }
+  if (t.dataset.act === 'close' || (t.dataset.act === 'close-bg' && e.target === t)) { st.open = null; st.actual = false; render(); }
+});
+app.addEventListener('submit', e => e.preventDefault());
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && st.open !== null) { st.open = null; st.actual = false; render(); return; }
+  if (e.key === 'h' && !e.target.matches?.('textarea,input')) document.body.classList.toggle('nobar');
+});
+function bar() {
+  const grp = (k, label, opts) => `<div class="grp"><span class="lbl0">${label}</span>${opts.map(([v, n]) => `<button type="button" data-bar="${k}:${v}" aria-pressed="${st[k] === v}">${n}</button>`).join('')}</div>`;
+  $('#bar').innerHTML = grp('dir', 'Direction', [['a', 'A: in the box, over the page (chosen)'], ['b', 'B: a list, in the side pane (rejected)'], ['c', 'C: at reading width, in a tab (rejected)']])
+    + grp('moment', 'Moment', [['attaching', 'Attaching: one taken in, one pasted'], ['drop', 'A file held over'], ['refused', 'Two refused'], ['sent', 'Sent, with and without text'], ['full', 'A photo at full size'], ['question', 'While a question is open']])
+    + grp('theme', 'Theme', [['frappe', 'Frappé'], ['latte', 'Latte (rough)']])
+    + '<div class="keys">Remove works; a photo in the thread opens · H hides this · Escape closes a photo</div>';
+}
+render();
+</script>
+</body>
+</html>
