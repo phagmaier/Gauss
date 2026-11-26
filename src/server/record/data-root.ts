@@ -43,6 +43,11 @@ import { isDeepStrictEqual } from "node:util";
 import { crc32 } from "node:zlib";
 import { z } from "zod";
 import { ArtifactFile } from "../../shared/artifact.ts";
+import {
+  type CheatSheet,
+  CheatSheetId,
+  CheatSheetSource,
+} from "../../shared/cheat-sheet.ts";
 import { type BackendName, Course, Slug } from "../../shared/course.ts";
 import {
   Curriculum,
@@ -386,6 +391,30 @@ export interface DataRoot {
     html: string,
     source: NotesSource,
   ): Promise<void>;
+  /** The course's kept cheat sheets, newest first: one for each source in `cheat-sheets/`. */
+  listCheatSheets(id: string): Promise<CheatSheet[]>;
+  /**
+   * A kept cheat sheet's page; undefined when the course keeps no sheet by
+   * that id, or the id cannot be a sheet's.
+   */
+  readCheatSheetHtml(id: string, sheetId: string): Promise<string | undefined>;
+  /**
+   * Keeps a new cheat sheet, never over one: its page, then its source. A
+   * sheet is listed by its source: a source that cannot be written takes
+   * its page with it, and a crash between the two leaves a page no list
+   * shows, which `clearInterruptedWrites` removes.
+   */
+  writeCheatSheet(
+    id: string,
+    sheetId: string,
+    html: string,
+    source: CheatSheetSource,
+  ): Promise<void>;
+  /**
+   * Removes a kept cheat sheet, its source first, so a crash between the
+   * two leaves a page startup removes. False when there is none by that id.
+   */
+  deleteCheatSheet(id: string, sheetId: string): Promise<boolean>;
   /**
    * The unit's handoff note, `units/<unit id>/handoff.md`, trimmed, with how
    * much of the thread it covers (`handoff.json`); undefined when the unit
@@ -451,12 +480,14 @@ export interface DataRoot {
    * Removes the temporary files of whole-file writes a crash interrupted
    * (`isTemporaryName`): plain files only, and only in these of the
    * record's folders: the root, each course's folder, its units' folders,
-   * notes/ and artifacts/. It never looks in a course's workspace/,
-   * packages/, sources/, sessions/ or install journal, in courses/ itself,
-   * where a deleted course is parked, or in uploads/, which clearUploads
-   * removes. A temporary file of a write still running would go too, so it
-   * is called at start, before anything writes. What cannot be read or
-   * removed is logged and left; it never throws.
+   * notes/, artifacts/ and cheat-sheets/. It never looks in a course's
+   * workspace/, packages/, sources/, sessions/ or install journal, in
+   * courses/ itself, where a deleted course is parked, or in uploads/,
+   * which clearUploads removes. It also removes a cheat sheet's page whose
+   * source is missing, which a crash while writing or deleting the sheet
+   * leaves. A file of a write still running would go too, so it is called
+   * at start, before anything writes. What cannot be read or removed is
+   * logged and left; it never throws.
    */
   clearInterruptedWrites(log: (line: string) => void): Promise<void>;
   /** Removes abandoned pageImage scratch in course sources. Call only at locked startup. */
@@ -579,6 +610,9 @@ export class TeachingChanged extends Error {
     this.name = "TeachingChanged";
   }
 }
+
+/** A course's folder of kept cheat sheets. */
+const CHEAT_SHEETS = "cheat-sheets";
 
 /** The plain-text notes kept with a course's curriculum. */
 type Note = "style.md" | "background.md";
@@ -1780,6 +1814,111 @@ export function openDataRoot(options: {
       });
     },
 
+    async listCheatSheets(id) {
+      const folder = courseFile(id, CHEAT_SHEETS);
+      let names: string[];
+      try {
+        names = (await readdir(folder, { withFileTypes: true }))
+          .filter((entry) => entry.isFile())
+          .map((entry) => entry.name);
+      } catch (error) {
+        if (hasCode(error, "ENOENT")) return [];
+        throw error;
+      }
+      const sheets: CheatSheet[] = [];
+      for (const name of names) {
+        const sheetId = name.endsWith(".json") ? name.slice(0, -5) : "";
+        if (!CheatSheetId.safeParse(sheetId).success) continue;
+        const source = await readJson(join(folder, name), CheatSheetSource);
+        if (source === undefined) continue;
+        const { units, instructions, writtenAt } = source;
+        sheets.push({
+          id: sheetId,
+          units,
+          instructions,
+          writtenAt,
+          path: join(folder, `${sheetId}.html`),
+        });
+      }
+      return sheets.sort(
+        (a, b) =>
+          Date.parse(b.writtenAt) - Date.parse(a.writtenAt) ||
+          a.id.localeCompare(b.id),
+      );
+    },
+
+    async readCheatSheetHtml(id, sheetId) {
+      if (!CheatSheetId.safeParse(sheetId).success) return undefined;
+      const base = join(courseFile(id, CHEAT_SHEETS), sheetId);
+      // Only a listed sheet's page: one without its source is not kept.
+      if ((await readJson(`${base}.json`, CheatSheetSource)) === undefined) {
+        return undefined;
+      }
+      return readFileText(`${base}.html`);
+    },
+
+    async writeCheatSheet(id, sheetId, html, source) {
+      const base = join(
+        courseFile(id, CHEAT_SHEETS),
+        CheatSheetId.parse(sheetId),
+      );
+      const checked = CheatSheetSource.parse(source);
+      await existingCourse(id);
+      const folder = dirname(base);
+      // Under the snapshot's lock, so a backup never takes the page
+      // without its source, nor one without the other while deleting.
+      await withFileLock(courses, async () => {
+        if ((await mkdir(folder, { recursive: true })) !== undefined) {
+          await syncFolder(dirname(folder));
+        }
+        // A failed write of the page removes what it may have named: the
+        // id is new, so the name held no other sheet's page.
+        let named: boolean;
+        try {
+          named = await writeFileNew(`${base}.html`, html);
+        } catch (error) {
+          await rm(`${base}.html`, { force: true });
+          throw error;
+        }
+        if (!named) {
+          throw new Error(`A cheat sheet is already kept at ${base}.html.`);
+        }
+        try {
+          named = await writeFileNew(
+            `${base}.json`,
+            `${JSON.stringify(checked, null, 2)}\n`,
+          );
+        } catch (error) {
+          // Once the source has its name the sheet is kept, though a
+          // step after the link failed; until then, the page goes, as a
+          // page no source lists could not be deleted from the app.
+          if (await isFile(`${base}.json`)) return;
+          await rm(`${base}.html`, { force: true });
+          throw error;
+        }
+        if (!named) {
+          await rm(`${base}.html`, { force: true });
+          throw new Error(`A cheat sheet is already kept at ${base}.json.`);
+        }
+      });
+    },
+
+    async deleteCheatSheet(id, sheetId) {
+      if (!CheatSheetId.safeParse(sheetId).success) return false;
+      const base = join(courseFile(id, CHEAT_SHEETS), sheetId);
+      return withFileLock(courses, async () => {
+        try {
+          await unlink(`${base}.json`);
+        } catch (error) {
+          if (hasCode(error, "ENOENT")) return false;
+          throw error;
+        }
+        await rm(`${base}.html`, { force: true });
+        await syncFolder(dirname(base));
+        return true;
+      });
+    },
+
     async readHandoff(id, unitId) {
       const folder = unitFolder(id, unitId);
       await existingCourse(id);
@@ -1957,26 +2096,49 @@ export function openDataRoot(options: {
       // folder is published) and in an install's journal, whose receipt.json
       // goes with the journal (packages.ts).
       const folders = [options.path];
+      const sheetFolders: string[] = [];
       for (const course of await slugFolders(courses)) {
+        sheetFolders.push(join(course, CHEAT_SHEETS));
         folders.push(course, join(course, "notes"), join(course, "artifacts"));
         folders.push(...(await slugFolders(join(course, "units"))));
       }
+      folders.push(...sheetFolders);
+      const remove = async (path: string, left: string) => {
+        try {
+          await unlink(path);
+        } catch (error) {
+          if (!hasCode(error, "ENOENT")) {
+            const why = error instanceof Error ? error.message : String(error);
+            log(`Could not remove ${path}, ${left}: ${why}`);
+          }
+        }
+      };
       for (const folder of folders) {
         for (const entry of await entries(folder)) {
           if (!entry.isFile() || !isTemporaryName(entry.name)) continue;
-          const path = join(folder, entry.name);
-          try {
-            // A temporary file writeFileNew had linked is a second name of
-            // the published file; unlinking it leaves the file as it is.
-            await unlink(path);
-          } catch (error) {
-            if (!hasCode(error, "ENOENT")) {
-              const why =
-                error instanceof Error ? error.message : String(error);
-              log(
-                `Could not remove ${path}, left by an interrupted write: ${why}`,
-              );
-            }
+          // A temporary file writeFileNew had linked is a second name of
+          // the published file; unlinking it leaves the file as it is.
+          await remove(
+            join(folder, entry.name),
+            "left by an interrupted write",
+          );
+        }
+      }
+      for (const folder of sheetFolders) {
+        const files = (await entries(folder))
+          .filter((e) => e.isFile())
+          .map((e) => e.name);
+        const sources = new Set(files.filter((name) => name.endsWith(".json")));
+        for (const name of files) {
+          const sheetId = name.endsWith(".html") ? name.slice(0, -5) : "";
+          if (
+            CheatSheetId.safeParse(sheetId).success &&
+            !sources.has(`${sheetId}.json`)
+          ) {
+            await remove(
+              join(folder, name),
+              "a cheat sheet's page without its source",
+            );
           }
         }
       }
@@ -2531,6 +2693,16 @@ async function writeJson<T>(
 ): Promise<void> {
   const checked = schema.parse(value);
   await writeFileAtomic(path, `${JSON.stringify(checked, null, 2)}\n`);
+}
+
+/** Whether a plain file is at the path. */
+async function isFile(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch (error) {
+    if (hasCode(error, "ENOENT")) return false;
+    throw error;
+  }
 }
 
 function hasCode(error: unknown, code: string): boolean {

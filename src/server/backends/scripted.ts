@@ -119,7 +119,9 @@
 // one reads that stretch too.
 //
 // The notes writer (task 5.9) supplies a small standalone page with a
-// figure and math, repeating any instructions from the learner.
+// figure and math, repeating any instructions from the learner. The cheat
+// sheet writer supplies a page that names each unit it was given, in
+// order, with math, and repeats the instructions.
 //
 // A dispute of a grade (task 3.8) is decided by the scripted judge: the
 // grade stands unless the learner's reason has "/change" in it, which
@@ -141,6 +143,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { CheatSheetReply } from "../../shared/cheat-sheet.ts";
 import type { PlannerProposal, Unit } from "../../shared/curriculum.ts";
 import { DisputeJudgment } from "../../shared/dispute.ts";
 import { HandoffReply } from "../../shared/handoff.ts";
@@ -1376,6 +1379,7 @@ function scriptedReply(request: OneShotRequest<unknown>): FakeReply {
   if (request.schema === DisputeJudgment) return scriptedDispute(request);
   if (request.schema === HandoffReply) return scriptedHandoff(request);
   if (request.schema === NotesReply) return scriptedNotes(request);
+  if (request.schema === CheatSheetReply) return scriptedCheatSheet(request);
   const answer =
     /<answer>\n([\s\S]*)\n<\/answer>/.exec(request.prompt)?.[1] ?? "";
   if (answer.includes("/fail")) {
@@ -1414,6 +1418,39 @@ svg { display: block; width: 10em; }
 <path d="M10 60H90L10 10Z" fill="none" stroke="currentColor" stroke-width="2"/>
 <path d="M10 50H20V60" fill="none" stroke="currentColor"/>
 </svg><figcaption>A right triangle</figcaption></figure>
+</main></body></html>`,
+    },
+  };
+}
+
+function scriptedCheatSheet(request: OneShotRequest<unknown>): FakeReply {
+  // The request escapes `&` and `<` in what it tags; the page escapes again.
+  const tagged = (name: string) =>
+    new RegExp(`<${name}>\n([\\s\\S]*?)\n</${name}>`)
+      .exec(request.prompt)?.[1]
+      ?.replaceAll("&lt;", "<")
+      .replaceAll("&amp;", "&") ?? "";
+  const html = (text: string) =>
+    text.replaceAll("&", "&amp;").replaceAll("<", "&lt;");
+  // The engine wrote this JSON (engine/cheat-sheets.ts, `request`).
+  const units = JSON.parse(tagged("units") || "[]") as {
+    number: number;
+    title: string;
+  }[];
+  const instructions = tagged("instructions") || "None";
+  return {
+    output: {
+      html: `<!doctype html>
+<html lang="en"><head><title>Scripted cheat sheet</title>
+<style>
+body { background: #303446; color: #c6d0f5; font: 15px/1.5 system-ui, sans-serif; }
+main { max-width: 60em; margin: 2em auto; padding: 0 1em; columns: 2; }
+section { break-inside: avoid; background: #292c3c; padding: .5em 1em; margin: 0 0 1em; }
+@page { margin: 9mm; }
+@media print { body { background: white; color: black; } section { background: white; } }
+</style></head><body><h1>Scripted cheat sheet</h1>
+<p>Instructions: ${html(instructions)}</p><main>
+${units.map((unit) => `<section><h2>Unit ${unit.number}: ${html(unit.title)}</h2><p>The main idea: <span class="math-inline">a^2 + b^2 = c^2</span>.</p></section>`).join("\n")}
 </main></body></html>`,
     },
   };

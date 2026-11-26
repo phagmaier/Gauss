@@ -14,6 +14,10 @@ import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { z } from "zod";
 import {
+  type CheatSheetList,
+  CheatSheetPost,
+} from "../../shared/cheat-sheet.ts";
+import {
   CourseSettings,
   NO_WEB_SEARCH_ON_CODEX,
   Slug,
@@ -75,6 +79,7 @@ import {
 import { StyleAnswer } from "../../shared/style.ts";
 import type { WhatIKnow } from "../../shared/what-i-know.ts";
 import type { AttachResult, Upload } from "../engine/attached-sources.ts";
+import type { CheatSheets } from "../engine/cheat-sheets.ts";
 import { fileProblem, workspaceFile } from "../engine/code-run.ts";
 import type { ChatResult, EventLog } from "../engine/conversation.ts";
 import {
@@ -120,6 +125,8 @@ export function createApp(options: {
   units: UnitChats;
   disputes: Disputes;
   notes: Notes;
+  /** The course's cheat sheets: their list, writes and deletions. */
+  cheatSheets: CheatSheets;
   /** Takes in the photos the learner attaches to a unit's messages. */
   photos: PhotoTaker;
   /** Renders a PDF page not already in the source's cache. */
@@ -137,6 +144,7 @@ export function createApp(options: {
     units,
     disputes,
     notes,
+    cheatSheets,
     photos,
     openFile,
   } = options;
@@ -153,7 +161,7 @@ export function createApp(options: {
 
   const deletion = createCourseDeletion({
     dataRoot,
-    holders: [units, plannings, intakes, notes, disputes],
+    holders: [units, plannings, intakes, notes, cheatSheets, disputes],
     ...(options.backup === undefined ? {} : { backup: options.backup }),
   });
 
@@ -852,6 +860,72 @@ export function createApp(options: {
       return c.json({ error: "No saved notes for this unit." }, 404);
     }
     const opened = await openFile(found.view.saved.path);
+    return opened.ok
+      ? c.json({ ok: true })
+      : c.json({ error: opened.error }, 502);
+  });
+
+  // A course's cheat sheets, as its notes: a write answers at once and runs
+  // on while the page leaves and comes back.
+  const sheetsPath = "/api/courses/:id/cheat-sheets";
+  app.get(sheetsPath, async (c) => {
+    c.header("Cache-Control", "no-store");
+    const found = await cheatSheets.list(c.req.param("id"));
+    return found.ok
+      ? c.json(found.list satisfies CheatSheetList)
+      : c.json({ error: found.error }, found.status);
+  });
+
+  app.post(sheetsPath, async (c) => {
+    const body = await readBody(c, CheatSheetPost);
+    if (!body.ok) return c.json({ error: body.error }, 400);
+    const started = await cheatSheets.start(
+      c.req.param("id"),
+      body.data.units,
+      body.data.instructions ?? "",
+    );
+    return started.ok
+      ? c.json(started.list satisfies CheatSheetList, 202)
+      : c.json({ error: started.error }, started.status);
+  });
+
+  app.post(`${sheetsPath}/:sheet/delete`, async (c) => {
+    const deleted = await cheatSheets.delete(
+      c.req.param("id"),
+      c.req.param("sheet"),
+    );
+    return deleted.ok
+      ? c.json({ ok: true })
+      : c.json({ error: deleted.error }, deleted.status);
+  });
+
+  app.get(`${sheetsPath}/:sheet/html`, async (c) => {
+    const html = await cheatSheets.html(
+      c.req.param("id"),
+      c.req.param("sheet"),
+    );
+    if (html === undefined) {
+      return c.json({ error: "No such cheat sheet." }, 404);
+    }
+    const inFrame =
+      c.req.header("Sec-Fetch-Dest") === "iframe" &&
+      c.req.header("Sec-Fetch-Site") === "same-origin";
+    return c.body(html, 200, {
+      ...ARTIFACT_TEXT_HEADERS,
+      ...(inFrame ? { "Content-Type": "text/html; charset=utf-8" } : {}),
+      "Content-Security-Policy": `sandbox; ${STANDALONE_HTML_POLICY}; frame-ancestors 'self'`,
+    });
+  });
+
+  app.post(`${sheetsPath}/:sheet/open`, async (c) => {
+    const path = await cheatSheets.path(
+      c.req.param("id"),
+      c.req.param("sheet"),
+    );
+    if (path === undefined) {
+      return c.json({ error: "No such cheat sheet." }, 404);
+    }
+    const opened = await openFile(path);
     return opened.ok
       ? c.json({ ok: true })
       : c.json({ error: opened.error }, 502);

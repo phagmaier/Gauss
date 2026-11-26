@@ -42,6 +42,7 @@ import {
   type FakeReply,
   type FakeTurn,
 } from "../backends/fake.ts";
+import { createCheatSheets } from "../engine/cheat-sheets.ts";
 import { givenOrder } from "../engine/choice-order.ts";
 import { createCoursePlannings } from "../engine/course-planning.ts";
 import { createDisputeJudge } from "../engine/dispute-judge.ts";
@@ -196,6 +197,12 @@ function setUp(
     units,
     disputes,
     notes,
+    cheatSheets: createCheatSheets({
+      dataRoot,
+      backend: createFakeBackend([]),
+      systemPrompt: "Write.",
+      ready: async () => {},
+    }),
     // These routes' tests have no sandbox, so a photo is refused.
     photos: createPhotoTaker({
       sandbox: {

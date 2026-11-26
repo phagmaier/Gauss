@@ -23,6 +23,7 @@ import {
   type FakeTurn,
   KeptSessions,
 } from "../backends/fake.ts";
+import { createCheatSheets } from "../engine/cheat-sheets.ts";
 import { givenOrder } from "../engine/choice-order.ts";
 import { createCoursePlannings } from "../engine/course-planning.ts";
 import { createDisputeJudge } from "../engine/dispute-judge.ts";
@@ -147,6 +148,12 @@ function setUp(
       }),
     }),
     notes: createNotes({
+      dataRoot,
+      backend: createFakeBackend([]),
+      systemPrompt: "Write.",
+      ready: async () => {},
+    }),
+    cheatSheets: createCheatSheets({
       dataRoot,
       backend: createFakeBackend([]),
       systemPrompt: "Write.",

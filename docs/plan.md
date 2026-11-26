@@ -50,91 +50,26 @@ source's figure (left out of stage 4); ranking passage matches with a
 cheap model, if the learner's use shows local search leaves too many
 plausible matches. Each is planned when chosen.
 
-Cheat sheets (6.31 and 6.32): `brief.md`, "Other features", "Cheat
-sheets"; piece 29, direction A. A cheat sheet is a one-shot writer's
-page, as the notes are. It reuses `engine/standalone-html.ts` and the
-notes writer's backend (`notesBackend`, Sonnet), whatever the course's
-backend. The request leaves the transcripts out: the transcripts of a
-course's units would not fit one request, and a one-page sheet needs the
-units' plans, the handoff notes and the learner's slips. The prompt is
-new model-facing text, which a real model first reads in the user check.
-
-### 6.31 The cheat sheet writer and its record — todo
-
-**Needs:** nothing open.
-**Why:** Only `engine/notes.ts` writes a learner's page, and it writes
-for one unit, which a new write replaces.
-**Do:**
-- Put the schemas in `shared/cheat-sheet.ts`:
-  - the request: unit ids and instructions, capped as the notes' are;
-  - the writer's reply, a schema of its own, so the scripted backend can
-    tell it from `NotesReply`;
-  - a kept sheet: id, units, instructions, `writtenAt`;
-  - the list: the kept sheets, newest first, any attempt (`writing`, or
-    `failed` with its reason), and the units that can be picked.
-- `prompts/cheat-sheet.md` asks for one printed page (A4 and Letter),
-  two at most for many units, with print styles that fit it. It asks
-  for reference on what the units taught (definitions, formulas and
-  procedures, each with a small example) and a short "watch for" list
-  from the learner's slips. It repeats the notes rules it needs, since
-  each writer reads only its own prompt: reworking every value, stating
-  rules positively with their assumptions, quoting only verified quotes
-  with their citations, the SVG and math markup, the colours, and no
-  scripts.
-- `engine/cheat-sheets.ts` (`createCheatSheets`, a `CourseHolder`)
-  writes one sheet at a time per course. A unit that is not finished
-  (`isFinished`) or not in the course is refused, as is an empty pick or
-  a write while one runs. The picked units go in course order. Each unit
-  sends its title, goal, `testedOut`, plan (as `citedPlan` in `notes.ts`
-  gives it), its handoff note and its verified quotes (`source_quoted`
-  events) with their citations. The course sends one list of misses and
-  corrections on those units' objectives, wherever answered, with
-  disputes applied (`countedAnswers`, `disputesIn`), and their
-  misconceptions. Measure the request for thirty finished units of the
-  seed's size, and put the figure in a comment.
-  Its time limit and failure handling are the notes writer's.
-- Store a sheet in the record as `courses/<id>/cheat-sheets/<sheet
-  id>.html`, finished by `finishStandaloneHtml`, and `.json`, with the
-  metadata and the writer's document. Write the HTML first, then the JSON.
-  The list reads the JSON files, so a crash between the two leaves an
-  HTML file that no list shows, and `clearInterruptedWrites` removes it.
-  The backup commits after each write and each delete. Add the folder to
-  the data root map, and the prompt and the module to `architecture.md`.
-- Routes under the course: list (GET), write (POST, answering 202),
-  delete, a sheet's HTML (headers and policy as `${notesPath}/html`),
-  and "open" (as `${notesPath}/open`).
-- The scripted backend answers the reply schema with a small page that
-  names the units and echoes the instructions, so `pnpm dev:fake` writes
-  a sheet.
-**Done when:** fake-backend tests in a temporary root show the following.
-- A write for two finished units answers 202 and lists a `writing`
-  attempt. Once settled, the list holds one sheet with the units in
-  course order, its instructions and date, and its HTML has KaTeX's math
-  and no script.
-- The request the fake backend received holds both units' plans and
-  handoff notes, a miss on one of their objectives answered in another
-  unit's review, and their misconceptions. It holds no objective of an
-  unpicked unit and no miss that a dispute overturned.
-- An unfinished unit, an unknown unit, an empty pick and a second write
-  while one runs are each refused, and nothing is written.
-- A writer failure and the time limit each leave a `failed` attempt with
-  its reason and no file.
-- Delete removes both files. An unknown sheet's id is refused with 404,
-  as is an id that would reach outside the folder.
-- On a new server on the same root, the sheet is still listed, and a
-  lone HTML file from an interrupted write is gone.
-- Deleting the course is refused while a sheet is being written.
-
-`mise run check` passes.
+Cheat sheets (6.32 and its user check): `brief.md`, "Other features",
+"Cheat sheets"; piece 29, direction A. The writer, its record and its
+routes are built (`engine/cheat-sheets.ts`, `shared/cheat-sheet.ts`); a
+sheet runs on the notes writer's backend (`notesBackend`, Sonnet),
+whatever the course's backend, and its request leaves the transcripts
+out. `prompts/cheat-sheet.md` is new model-facing text, which a real model
+first reads in the user check. A page holds at most 128 formulas
+(`MAX_FORMULAS` in `engine/standalone-html.ts`), and the hand-made example
+for two units has 109: the request names the limit, and the user check
+shows whether a sheet of many units keeps to it.
 
 ### 6.32 Cheat sheets on the page — todo
 
-**Needs:** 6.31.
+**Needs:** nothing open.
 **Why:** Nothing on the page asks for, lists or opens a cheat sheet.
-**Do:** Build piece 29's direction A in the course view, on 6.31's
-routes, and a reader page for a sheet, at its own route in `web/route.ts`,
-as `NotesReader` is for notes. A write in progress survives leaving the
-course view and coming back, as a notes write does.
+**Do:** Build piece 29's direction A in the course view, on the cheat
+sheet routes in `http/app.ts`, and a reader page for a sheet, at its own
+route in `web/route.ts`, as `NotesReader` is for notes. A write in
+progress survives leaving the course view and coming back, as a notes
+write does.
 **Done when:** in Chromium on `pnpm dev:fake` with a fresh root, in
 "Calculus 1 to 3":
 - units 5 and later cannot be picked;

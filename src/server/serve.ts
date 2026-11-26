@@ -16,6 +16,7 @@ import type {
   SessionBackends,
   TutorBackend,
 } from "./backends/backend.ts";
+import { createCheatSheets } from "./engine/cheat-sheets.ts";
 import { createCodeRunner } from "./engine/code-run.ts";
 import { createCoursePlannings } from "./engine/course-planning.ts";
 import { createDisputeJudge } from "./engine/dispute-judge.ts";
@@ -59,7 +60,7 @@ export interface EngineBackends {
   disputeBackend: TutorBackend;
   /** Writes handoff notes and finds misconceptions (task 5.7). */
   handoffBackend: TutorBackend;
-  /** Writes the learner's standalone unit notes. */
+  /** Writes the learner's standalone unit notes, and their cheat sheets. */
   notesBackend: TutorBackend;
   /**
    * Why a course cannot run on Codex now, or undefined when it can; the
@@ -116,8 +117,22 @@ export async function serve(
         log: (line) => process.stdout.write(`${line}\n`),
       })
     : noBackup;
-  const { converter, intakes, plannings, units, disputes, notes, photos } =
-    await wireEngine({ ...options, dataRootPath, dataRoot, sandbox, backup });
+  const {
+    converter,
+    intakes,
+    plannings,
+    units,
+    disputes,
+    notes,
+    cheatSheets,
+    photos,
+  } = await wireEngine({
+    ...options,
+    dataRootPath,
+    dataRoot,
+    sandbox,
+    backup,
+  });
   const api = getRequestListener(
     createApp({
       dataRoot,
@@ -127,6 +142,7 @@ export async function serve(
       units,
       disputes,
       notes,
+      cheatSheets,
       photos,
       openFile: systemOpener(),
       backup,
@@ -161,6 +177,7 @@ export async function serve(
       plannings.close(),
       units.close(),
       notes.close(),
+      cheatSheets.close(),
       vite.close(),
     ]);
     await Promise.allSettled([backup.settled(), sandbox.close()]);
@@ -227,6 +244,7 @@ export async function wireEngine(
     disputePrompt,
     handoffPrompt,
     notesPrompt,
+    cheatSheetPrompt,
     coursePlannerPrompt,
   ] = await Promise.all([
     prompt("planner.md"),
@@ -237,6 +255,7 @@ export async function wireEngine(
     prompt("dispute-judge.md"),
     prompt("handoff.md"),
     prompt("notes.md"),
+    prompt("cheat-sheet.md"),
     prompt("course-planner.md"),
   ]);
   // The learner's teaching instructions replace the paragraph between the
@@ -324,7 +343,26 @@ export async function wireEngine(
       units.get(courseId, unitId)?.settleNotesContext(),
     backup,
   });
+  // On the notes writer's backend, whatever the course's (brief.md,
+  // "Backends and stack": the writers stay on Claude).
+  const cheatSheets = createCheatSheets({
+    dataRoot,
+    backend: options.notesBackend,
+    systemPrompt: cheatSheetPrompt,
+    ready: (courseId, unitId) =>
+      units.get(courseId, unitId)?.settleNotesContext(),
+    backup,
+  });
   // Without the sandbox, a photo is refused with the reason.
   const photos = createPhotoTaker({ sandbox, dataRoot });
-  return { converter, intakes, plannings, units, disputes, notes, photos };
+  return {
+    converter,
+    intakes,
+    plannings,
+    units,
+    disputes,
+    notes,
+    cheatSheets,
+    photos,
+  };
 }

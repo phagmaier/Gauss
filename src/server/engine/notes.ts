@@ -339,7 +339,7 @@ async function request(
  * paragraphs: the stored range counts the PDF's pages from 1, which the
  * writer, asked to cite printed pages, could take for them.
  */
-function citedPlan(plan: Plan, sources: readonly Outline[]) {
+export function citedPlan(plan: Plan, sources: readonly Outline[]) {
   const byRef = sectionsByRef(sources);
   return {
     ...plan,
@@ -440,12 +440,13 @@ function linkedSections(
   return refs;
 }
 
-function tagged(name: string, content: string): string {
+/** Record text in a writer's request, escaped so that none of it closes the tag. */
+export function tagged(name: string, content: string): string {
   return `<${name}>\n${content.replaceAll("&", "&amp;").replaceAll("<", "&lt;")}\n</${name}>`;
 }
 
 /** Omit other units' assessment questions, feedback and detours from this unit's notes. */
-function unitEvents(
+export function unitEvents(
   events: readonly PageEvent[],
   answers: ReadonlyMap<string, AnswerEvidence>,
 ): PageEvent[] {
@@ -502,7 +503,8 @@ function unitEvents(
   return kept;
 }
 
-function wrongAnswer(
+/** A miss as the writers read it, with the dispute's correction and ruling if it has one. */
+export function wrongAnswer(
   entry: AnswerEvidence,
   outcome: DisputeOutcome | undefined,
 ) {

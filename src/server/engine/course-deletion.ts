@@ -35,6 +35,8 @@ export type Doing =
   | "unit-action"
   /** A unit's notes are being written. */
   | "notes"
+  /** A cheat sheet of the course is being written. */
+  | "cheat-sheet"
   | "dispute"
   /** The page of the course's planning conversation is open. */
   | "planning-page"
@@ -186,6 +188,8 @@ function refusal(stored: StoredCourse, use: CourseUse): string {
       return `Packages are being installed for ${unit}. ${later}`;
     case "notes":
       return `The notes of ${inner} are being written. ${later}`;
+    case "cheat-sheet":
+      return `A cheat sheet of this course is being written. ${later}`;
     case "dispute":
       return `A dispute of a grade in this course is being decided. ${later}`;
     case "planning-page":

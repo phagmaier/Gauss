@@ -48,8 +48,8 @@ without books, transcripts or progress: `GAUSS_DATA_ROOT`, else `~/gauss/`
 (`resolveDataRoot` in `record/data-root.ts`; the rest of the record takes
 the root as an argument). File shapes are the schemas in `src/shared/`
 (`course.ts`, `curriculum.ts` with `plan.ts`, `state.ts`, `evidence.ts`,
-`misconception.ts`, `handoff.ts`, `notes.ts`, `profile.ts`, `settings.ts`,
-`source.ts`).
+`misconception.ts`, `handoff.ts`, `notes.ts`, `cheat-sheet.ts`,
+`profile.ts`, `settings.ts`, `source.ts`).
 
 ```
 <data root>/
@@ -74,6 +74,7 @@ the root as an argument). File shapes are the schemas in `src/shared/`
     artifacts/<n>-<title>.html                    the tutor's aids, never overwritten
     photos/<id>.jpg                               the learner's photos, kept when their message is sent
     notes/<unit-id>.html, .json                   unit notes, and the writer's document
+    cheat-sheets/<uuid>.html, .json               cheat sheets, never overwritten; a page is kept only beside its .json
     packages/, .package-install.tmp/              the course's uv project; an install's rollback journal
     workspace/                                    the tutor's working folder; holds the installed .venv/
 ```
@@ -160,7 +161,8 @@ Rules no single file shows:
   is open; made for each loaded unit),
   `unit-record.ts`, `unit-agents.ts`, `unit-turns.ts`, `check-rules.ts`,
   `assessment-rules.ts`; `transcript.ts`, `transcript-html.ts`,
-  `handoff.ts`, `notes.ts`, `standalone-html.ts`. Grading: `grading.ts`,
+  `handoff.ts`, `notes.ts`, `cheat-sheets.ts`, `standalone-html.ts`.
+  Grading: `grading.ts`,
   `math-check.ts`, `code-run.ts`, `help-judge.ts`, `disputes.ts`,
   `dispute-judge.ts`. Commands: `sandbox.ts` (the only way the engine runs
   model- or learner-written input), `pytool.ts` (a `pytools/` script run
@@ -228,7 +230,7 @@ every other role on Claude. Each prompt starts one model's instructions:
 | `course-planner.md` | a course's planning conversation | `engine/course-planning.ts` |
 | `unit-planner.md` | a unit's planning session | `engine/unit-planning.ts` |
 | `grader.md`, `help-judge.md`, `dispute-judge.md` | one-shot judges | `engine/grading.ts`, `help-judge.ts`, `dispute-judge.ts` |
-| `handoff.md`, `notes.md` | one-shot writers | `engine/handoff.ts`, `engine/notes.ts` |
+| `handoff.md`, `notes.md`, `cheat-sheet.md` | one-shot writers; a cheat sheet runs on the notes writer's backend | `engine/handoff.ts`, `engine/notes.ts`, `engine/cheat-sheets.ts` |
 
 - A model is also instructed by turn headers (written in the files
   above), tool and zod field descriptions (`src/server/tools/`,

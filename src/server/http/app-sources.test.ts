@@ -29,6 +29,7 @@ import {
 import { FILE_NAME_HEADER, type PageEvent } from "../../shared/events.ts";
 import { Outline } from "../../shared/source.ts";
 import { createFakeBackend, type FakeTurn } from "../backends/fake.ts";
+import { createCheatSheets } from "../engine/cheat-sheets.ts";
 import { createCoursePlannings } from "../engine/course-planning.ts";
 import { createDisputeJudge } from "../engine/dispute-judge.ts";
 import { createDisputes } from "../engine/disputes.ts";
@@ -122,6 +123,12 @@ function setUp(script: FakeTurn[] = [], pages?: SourceConverter) {
       }),
     }),
     notes: createNotes({
+      dataRoot,
+      backend: createFakeBackend([]),
+      systemPrompt: "Write.",
+      ready: async () => {},
+    }),
+    cheatSheets: createCheatSheets({
       dataRoot,
       backend: createFakeBackend([]),
       systemPrompt: "Write.",

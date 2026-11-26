@@ -49,6 +49,7 @@ const ROLES = [
   "dispute-judge",
   "handoff",
   "notes",
+  "cheat-sheet",
 ] as const;
 let prompts: [string, string][];
 beforeAll(async () => {
@@ -130,6 +131,7 @@ async function close(engine: Engine) {
     engine.units.close(),
     engine.plannings.close(),
     engine.notes.close(),
+    engine.cheatSheets.close(),
     engine.intakes.close(),
   ]);
 }
@@ -213,8 +215,8 @@ async function check(dataRoot: DataRoot, courseId: string, chat: UnitChat) {
 /**
  * Every role of a course on the server, with a restart between its unit's
  * segments: the unit planned and taught, its checks answered, its gate
- * taken, a grade disputed, its notes written, and the course's planning
- * conversation.
+ * taken, a grade disputed, its notes and a cheat sheet written, and the
+ * course's planning conversation.
  */
 async function walk(
   backend: BackendName,
@@ -255,6 +257,11 @@ async function walk(
     await engine.notes.start(courseId, "limits", "", undefined),
   ).toMatchObject({ ok: true });
   await engine.notes.settled();
+  expect(
+    await engine.cheatSheets.start(courseId, ["limits"], ""),
+  ).toMatchObject({ ok: true });
+  await engine.cheatSheets.settled();
+  expect(await dataRoot.listCheatSheets(courseId)).toHaveLength(1);
   const planning = await engine.plannings.open(courseId);
   if (!planning.ok) throw new Error(planning.error);
   expect(planning.planning.say("What comes next?")).toEqual({ ok: true });
@@ -272,6 +279,7 @@ const OTHERS = [
   "oneShot handoff",
   "oneShot dispute-judge",
   "oneShot notes",
+  "oneShot cheat-sheet",
   "start course-planner",
 ];
 

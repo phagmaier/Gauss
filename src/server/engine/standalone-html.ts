@@ -1,5 +1,7 @@
-// Notes are opened both in the app and directly from disk. Keep author HTML
-// static in its own right; the meta policy is an independent browser guard.
+// Notes and cheat sheets are opened both in the app and directly from disk.
+// Keep author HTML static in its own right; the meta policy is an
+// independent browser guard. The writers' failures name "the page", since
+// either writer's can be shown.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -23,11 +25,12 @@ export const STANDALONE_HTML_POLICY =
 
 const OUTPUT_LIMIT_BYTES = 2_000_000;
 const MAX_DEPTH = 96;
-const MAX_FORMULAS = 128;
+/** How many formulas a page may have, and how much TeX in all. */
+export const MAX_FORMULAS = 128;
 const MAX_FORMULA_CHARS = 2_000;
-const MAX_MATH_CHARS = 8_000;
+export const MAX_MATH_CHARS = 8_000;
 const MATH_LIMIT =
-  "The notes are over the math limit. Use shorter formulas and no custom TeX macros.";
+  "The page is over the math limit. Use shorter formulas and no custom TeX macros.";
 
 const processor = unified()
   .use(rehypeParse, { fragment: false })
@@ -98,9 +101,9 @@ type MathBudget = { formulas: number; chars: number };
 /** Turns a writer's HTML into a self-contained document or throws why it cannot. */
 export function finishStandaloneHtml(html: string): string {
   if (Buffer.byteLength(html, "utf8") > STANDALONE_HTML_LIMIT_BYTES) {
-    throw new Error("The notes document is over the limit of 100 KB.");
+    throw new Error("The page is over the limit of 100 KB.");
   }
-  if (html.trim() === "") throw new Error("The notes writer returned no HTML.");
+  if (html.trim() === "") throw new Error("The writer returned no HTML.");
 
   const tree = parseDocument(html);
   inspectDocument(tree, 0);
@@ -147,7 +150,7 @@ export function finishStandaloneHtml(html: string): string {
 
   const result = processor.stringify(tree);
   if (Buffer.byteLength(result, "utf8") > OUTPUT_LIMIT_BYTES) {
-    throw new Error("The rendered notes are over the limit of 2 MB.");
+    throw new Error("The rendered page is over the limit of 2 MB.");
   }
   return result;
 }
@@ -158,7 +161,7 @@ function parseDocument(html: string): Root {
   } catch (error) {
     // The HTML-to-HAST conversion can hit the stack limit before our own check.
     if (error instanceof RangeError) {
-      throw new Error("The notes HTML is too deeply nested.");
+      throw new Error("The page's HTML is too deeply nested.");
     }
     throw error;
   }
@@ -170,7 +173,7 @@ function requiredElement(parent: Parent, tagName: string): Element {
       node.type === "element" && node.tagName === tagName,
   );
   if (element === undefined) {
-    throw new Error("The notes writer did not return an HTML document.");
+    throw new Error("The writer did not return an HTML document.");
   }
   return element;
 }
@@ -178,7 +181,7 @@ function requiredElement(parent: Parent, tagName: string): Element {
 /** Refuse web addresses even in elements/attributes that would be stripped. */
 function inspectDocument(parent: Parent, depth: number): void {
   if (depth > MAX_DEPTH)
-    throw new Error("The notes HTML is too deeply nested.");
+    throw new Error("The page's HTML is too deeply nested.");
   for (const node of parent.children) {
     if (node.type === "element") {
       for (const [key, value] of Object.entries(node.properties)) {
@@ -209,7 +212,7 @@ function rejectWebAddress(value: string): void {
     /\b(?:https?|ftp):(?=\S)|(?:^|[\s"'(=,;])\/\/[^\s"'<>/]/i.test(normalized)
   ) {
     throw new Error(
-      "The notes document names a web address. Use only local links and inline resources.",
+      "The page names a web address. Use only local links and inline resources.",
     );
   }
 }
@@ -292,7 +295,7 @@ function sanitizeAttributes(node: Element, svg: boolean): void {
 
 function checkCss(css: string): void {
   const problem =
-    "The notes use a CSS reference that cannot be kept offline. Use inline CSS and local fragments only.";
+    "The page uses a CSS reference that cannot be kept offline. Use inline CSS and local fragments only.";
   // No escaped tokens, stylesheet imports, or functions with string URL
   // arguments. url() itself can refer only to an element in this document.
   if (
@@ -332,7 +335,7 @@ function checkMath(
   let source = "";
   for (const child of node.children) {
     if (child.type !== "text") {
-      throw new Error("The notes must give each formula as plain TeX.");
+      throw new Error("The page must give each formula as plain TeX.");
     }
     source += child.value;
   }
