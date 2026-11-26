@@ -603,6 +603,33 @@ test("every objective passed, the learner has the whole unit taught: from its fi
   );
 });
 
+const TESTED_OUT_SAID =
+  '[Unit 2 of 2, "The derivative". The unit is finished: every objective passed. ' +
+  "The unit was not taught: the learner chose to skip the teaching when the test before it showed every objective passed. " +
+  "Message from the learner. Allowed now: reply to the learner. No teaching tools.]\n";
+
+test("a unit finished by skipping what the test passed, every objective, tells its tutor the learner chose to skip the teaching, after a restart too", async () => {
+  await makeCourse();
+  const first = setUp();
+  const chat = await testOut(first);
+  for (const confidence of ["90", "100", "90"] as const) {
+    await answer(chat, "A", confidence);
+  }
+  await step(chat.skipTested(["slope", "power-rule", "chain-rule"]), chat);
+  expect(ofType(chat, "unit_closed")).toEqual([
+    { type: "unit_closed", status: "passed" },
+  ]);
+
+  await step(Promise.resolve(chat.say("Thanks!")), chat);
+  expect(sent(first.backend).at(-1)).toBe(`${TESTED_OUT_SAID}Thanks!`);
+  await first.units.close();
+
+  const second = setUp();
+  const reopened = await open(second);
+  await step(Promise.resolve(reopened.say("Back again.")), reopened);
+  expect(sent(second.backend)).toEqual([`${TESTED_OUT_SAID}Back again.`]);
+});
+
 test.each(["whole", "partial skip"] as const)(
   "reopening after a saved %s choice with no transcript record settles the test and heads the lesson",
   async (choice) => {
@@ -771,7 +798,7 @@ test("a partial result skips nothing while its card waits, across a restart too;
   expect(lastQuestion(chat)).toMatchObject({ number: 1 });
 });
 
-test("the unit's gate, after the segments taught, leaves out what the test passed", async () => {
+test("the unit's gate, after the segments taught, leaves out what the test passed; skipped, the unit finishes taught, and its tutor is not told the teaching was skipped", async () => {
   await makeCourse();
   const setup = setUp();
   const chat = await testOut(setup);
@@ -800,6 +827,16 @@ test("the unit's gate, after the segments taught, leaves out what the test passe
     gated: true,
   });
   expect(nextStep(replay(chat))).toBeNull();
+
+  await step(chat.skipAssessment(), chat);
+  expect(ofType(chat, "unit_closed")).toEqual([
+    { type: "unit_closed", status: "passed" },
+  ]);
+  await step(Promise.resolve(chat.say("Thanks!")), chat);
+  expect(sent(setup.backend).at(-1)).toBe(
+    '[Unit 2 of 2, "The derivative". The unit is finished: every objective passed. ' +
+      "Message from the learner. Allowed now: reply to the learner. No teaching tools.]\nThanks!",
+  );
 });
 
 test("a later segment's start leaves out what the test passed in it", async () => {

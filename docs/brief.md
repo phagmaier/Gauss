@@ -263,7 +263,10 @@ what is due, and on-demand self-test.
   ends, the tutor says what it showed, and its result card follows; if
   that turn never reaches the tutor, fails, or is cut off by a restart,
   the card shows anyway, and the tutor's next turn says it first (the
-  user's choice, 2026-11-25).
+  user's choice, 2026-11-25). A unit finished by skipping what the test
+  passed, every objective, tells its tutor from then on that it was not
+  taught: the learner chose to skip the teaching (the user's choice,
+  2026-11-25).
 - **Self-test** is the learner's to start, from the course view, at any
   time. They pick the scope (a segment, a unit, the whole course, or a
   random mix of what they have passed), the kinds of question (choice,

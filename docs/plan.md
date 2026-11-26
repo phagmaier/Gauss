@@ -48,30 +48,12 @@ chosen.
 
 ## Known-gap fixes
 
-K.32 and the user check below finish the gaps K.30's review left open
+The user check below is what is left of the gaps K.30's review left open
 (the user's choices, 2026-11-25). The tutor's word on the test is kept
-owed until it reaches the tutor; a unit finished by testing out is to
-tell its tutor the teaching was skipped. A dispute notice lost to a
-failed write and a restart is accepted (a comment at `keepDispute` in
+owed until it reaches the tutor, and a unit finished by testing out tells
+its tutor the teaching was skipped. A dispute notice lost to a failed
+write and a restart is accepted (a comment at `keepDispute` in
 `unit-record.ts` says why).
-
-### K.32 A unit finished by testing out says the teaching was skipped (todo)
-
-Skipping what the test passed, when it passed every objective, finishes
-the unit without a test-answered notice: the finished unit's header says
-every objective passed, not that the learner chose to skip the teaching.
-The finished unit's header says so whenever the record has the unit
-tested out (`State.testedOut`), as a partial skip's header names what it
-leaves out.
-
-Depends on: nothing.
-
-Done when: an engine test on the fake backend in a temporary data root
-shows that, after a test that passed every objective and "Skip what
-passed", the header of the learner's next message in the finished unit,
-and after a restart too, says the test passed every objective and the
-learner chose to skip the teaching; a unit finished by being taught
-does not say so. `mise run check` passes.
 
 ### User check: the test's word and a tested-out unit
 

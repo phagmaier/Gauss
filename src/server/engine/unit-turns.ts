@@ -170,6 +170,11 @@ export interface Where {
   goOver: readonly string[];
   /** Set once the unit is finished and no longer in progress. */
   finished?: "passed" | "overridden";
+  /**
+   * The unit finished at the test's result: the test passed every
+   * objective, and the learner chose to skip the teaching.
+   */
+  testedOut?: true;
   /** A graded answer's feedback is queued behind earlier learner messages. */
   feedbackPending?: number;
   /** Things the tutor has not been told yet, said once, in this header. */
@@ -1465,9 +1470,17 @@ function describe(where: Where): string {
         : held.mode === "self-test"
           ? ` ${selfTestLine(held)} It leaves the unit finished.`
           : " The learner asked for a review in its thread, which leaves it finished.";
+    // Without this, the tutor reads a unit it never taught as taught: no
+    // notice of the skip is left, since skipping every objective finishes
+    // the unit at once. Told as of the choice, since a dispute since then
+    // can take a pass away and leave the unit overridden.
+    const tested =
+      where.testedOut === true
+        ? " The unit was not taught: the learner chose to skip the teaching when the test before it showed every objective passed."
+        : "";
     return movedOn.length === 0
-      ? `${unit}. The unit is finished: every objective passed.${since}${run}`
-      : `${unit}. The unit is finished: the learner moved on without passing ${quoted(movedOn)}.${since}${run}`;
+      ? `${unit}. The unit is finished: every objective passed.${tested}${since}${run}`
+      : `${unit}. The unit is finished: the learner moved on without passing ${quoted(movedOn)}.${tested}${since}${run}`;
   }
   const segment = segmentOf(context.plan, position);
   const leaving =

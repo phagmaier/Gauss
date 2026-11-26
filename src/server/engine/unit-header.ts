@@ -127,6 +127,7 @@ export function createUnitHeader({
     | "position"
     | "evidence"
     | "finished"
+    | "testedOut"
     | "recordedAnswer"
     | "disputeOf"
     | "packageCompletions"
@@ -325,6 +326,7 @@ export function createUnitHeader({
         record.position.gated === true,
       ),
       ...(record.finished === undefined ? {} : { finished: record.finished }),
+      ...(record.testedOut ? { testedOut: true as const } : {}),
       ...(pending !== undefined && !pending.started
         ? { feedbackPending: pending.number }
         : {}),
