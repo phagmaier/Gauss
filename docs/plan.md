@@ -50,8 +50,8 @@ source's figure (left out of stage 4); ranking passage matches with a
 cheap model, if the learner's use shows local search leaves too many
 plausible matches. Each is planned when chosen.
 
-Cheat sheets (6.30 to 6.32): `brief.md`, "Other features", "Cheat
-sheets"; piece 29, which 6.30 mocks. A cheat sheet is a one-shot writer's
+Cheat sheets (6.31 and 6.32): `brief.md`, "Other features", "Cheat
+sheets"; piece 29, direction A. A cheat sheet is a one-shot writer's
 page, as the notes are. It reuses `engine/standalone-html.ts` and the
 notes writer's backend (`notesBackend`, Sonnet), whatever the course's
 backend. The request leaves the transcripts out: the transcripts of a
@@ -59,35 +59,9 @@ course's units would not fit one request, and a one-page sheet needs the
 units' plans, the handoff notes and the learner's slips. The prompt is
 new model-facing text, which a real model first reads in the user check.
 
-### 6.30 Mock piece 29, cheat sheets — todo
-
-**Needs:** nothing open.
-**Why:** The course view has no place to ask for a cheat sheet or to list
-kept ones, and Gauss has no page for reading one.
-**Do:** Mock piece 29 in `docs/prototype/` in two or three directions in
-the redesign's look (`look.css`). Each direction covers:
-- where a sheet is asked for in the course view;
-- picking units: only finished ones can be picked, and "all finished
-  units" is one step;
-- the instructions box, as the notes have;
-- the list of kept sheets, each with its units, its date, "Open", "Open
-  in browser" and "Delete" with a plain confirmation;
-- a write in progress, and a failed one with its reason;
-- a course with no finished unit.
-
-Directions might be a panel in place beside "Self-test" (as piece 27), a
-"Cheat sheets" section of its own in the course view, or picking on the
-unit rows. Add `29-cheat-sheet-example.html`, a one-page sheet for two
-Calculus units (as `17-notes-example.html` is for notes): it shows the
-density the prompt will ask for, and it prints on one page, dark on
-white. Add the piece to `index.html` and ask the user to pick.
-**Done when:** the user has picked a direction. The pick is recorded in
-`brief.md`, "Page", and the rejected directions in the piece's header.
-`mise exec -- pnpm lint` passes.
-
 ### 6.31 The cheat sheet writer and its record — todo
 
-**Needs:** nothing open. It can run before or beside 6.30.
+**Needs:** nothing open.
 **Why:** Only `engine/notes.ts` writes a learner's page, and it writes
 for one unit, which a new write replaces.
 **Do:**
@@ -155,9 +129,9 @@ for one unit, which a new write replaces.
 
 ### 6.32 Cheat sheets on the page — todo
 
-**Needs:** 6.30 and 6.31.
+**Needs:** 6.31.
 **Why:** Nothing on the page asks for, lists or opens a cheat sheet.
-**Do:** Build piece 29's picked direction in the course view, on 6.31's
+**Do:** Build piece 29's direction A in the course view, on 6.31's
 routes, and a reader page for a sheet, at its own route in `web/route.ts`,
 as `NotesReader` is for notes. A write in progress survives leaving the
 course view and coming back, as a notes write does.

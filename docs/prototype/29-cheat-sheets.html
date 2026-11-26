@@ -1,0 +1,403 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Stage 6, piece 29: cheat sheets, in the redesign's
+  look (look.css). 29-cheat-sheet-example.html is a sheet, made by hand.
+  SETTLED 2026-11-26: the user took direction A, as shown. Rejected: B (a
+  section of its own after the units, with numbered chips: far down the
+  page at 30 units) and C (boxes on the unit rows, with a bar pinned to
+  the foot and the kept sheets above the units).
+
+  What it answers, from the user's decisions of 2026-11-26 (brief.md,
+  "Other features", "Cheat sheets"):
+  - Where a sheet is asked for in the course view.
+  - Picking units: only finished ones (passed or overridden) can be
+    picked, and "All finished units" is one step. The sheet takes the
+    picked units in course order.
+  - An instructions box, as the notes have, which may stay empty.
+  - The kept sheets, newest first, each with its units, the date it was
+    written, "Open", "Open in browser" and "Delete", which asks a plain
+    confirmation.
+  - A sheet being written, which the learner can leave; one write at a
+    time per course. A failed write says why, with "Try again".
+  - A course with no finished unit.
+
+  The directions (the bar still switches them):
+  - A, a panel beside "Self-test" (chosen): "Cheat sheets" beside
+    "Self-test" on the due line opens a panel in place, as the
+    self-test's does. The kept sheets are at its top; under them a box
+    per finished unit with its title, "All finished units" first, the
+    instructions and "Write the cheat sheet". Closed, the line says how
+    many are kept; a write in progress or a failed one shows under the
+    line.
+  - B, a section of its own (rejected): "Cheat sheets" after the units,
+    as the app's "Sources" and "The web" are, always lists the kept
+    sheets. "Write a cheat sheet" opens the form in the section: the
+    finished units as numbered chips, "All finished units" first, the
+    picked units' titles spelled out under them, the instructions and
+    Write.
+  - C, picking on the unit rows (rejected): "Cheat sheets" is a short
+    section above the units, with the kept sheets. "Pick units" puts a
+    box on each finished unit's row in the unit list; a bar pinned to the
+    foot of the page holds the count, "All finished units", the
+    instructions and Write.
+
+  The same in every direction:
+  - A write in progress is a row at the top of the kept sheets, which
+    stays when the learner leaves and comes back; a failed one keeps its
+    row, with the reason and "Try again", until the next write.
+  - The reader: the top line has "Open in browser" and "Delete"; above
+    the sheet, its units, when it was written, the instructions and the
+    file's path with "Copy path". The sheet fills the rest, in a frame,
+    as the notes do.
+  - A course with no finished unit says a sheet is written from finished
+    units, and offers nothing to pick.
+
+  The bar at the bottom left picks the direction, the course, the moment
+  and the theme. Keys: H hides the bar.
+
+  Everything is simulated: the courses, the sheets and the writing. The
+  picking, the instructions, Write, Try again, Open, Delete and its
+  confirmation work; a write takes three seconds and makes the example
+  sheet, whatever was picked. "Calculus I" has units 1, 2, 3 and 5
+  finished (5 overridden), "Calculus 1 to 3" units 1 to 24, and "Linear
+  algebra for PCA" none.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gauss prototype 29: cheat sheets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/computer-modern@0.1.3/cmu-serif.css">
+<link rel="stylesheet" href="look.css">
+<style>
+.hint{font-size:13.5px;color:var(--ink-3);margin:.5em 0 0}
+.cs-panel{border:1px solid var(--rule-2);border-radius:12px;padding:14px 18px;margin:12px 0 20px}
+.cs-panel .card-h{margin-bottom:.2em}
+.cs-q{margin:1em 0 0}
+.cs-q>.lbl{display:block;margin-bottom:.45em}
+.duebar .acts{margin-left:auto;display:flex;gap:1.2em;align-items:center}
+.duebar .acts .btn{margin-left:0}
+.duebar .cnt{color:var(--ink-3);font-size:13px}
+
+/* the units to pick: boxes (A), chips (B) */
+.cs-boxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.3em 1.4em;font-size:14.5px}
+.cs-boxes label{display:flex;align-items:baseline;gap:.55em;cursor:pointer;min-width:0}
+.cs-boxes label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cs-boxes .all{grid-column:1/-1;font-weight:500;padding-bottom:.3em;border-bottom:1px solid var(--rule);margin-bottom:.2em}
+.cs-boxes .n{font:500 11.5px var(--f-label);color:var(--ink-3);letter-spacing:.04em}
+.cs-chips{display:flex;flex-wrap:wrap;gap:6px}
+.cs-chips .chip{min-width:2.4em}
+.cs-chips .chip.all{margin-right:6px}
+.cs-picked{font-size:13.5px;color:var(--ink-2);margin:.6em 0 0}
+.cs-not{font-size:13.5px;color:var(--ink-3);margin:.6em 0 0}
+.field{width:100%;font:inherit;font-size:14.5px;color:var(--ink);background:var(--raised);border:1px solid var(--rule-2);border-radius:8px;padding:.45em .7em;resize:vertical}
+.field::placeholder{color:var(--ink-3)}
+.cs-foot{display:flex;justify-content:flex-end;align-items:center;gap:1.2em;margin-top:.9em;flex-wrap:wrap}
+.cs-foot .sum{margin-right:auto;font-size:13.5px;color:var(--ink-2)}
+
+/* the kept sheets, the same in every direction */
+.cs-list{list-style:none;margin:.4em 0 0;padding:0}
+.cs-list>li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.15em 1.2em;align-items:baseline;padding:.7em 0;border-bottom:1px solid var(--rule)}
+.cs-list>li:last-child{border-bottom:0}
+.cs-u{font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cs-u b{font-weight:500}
+.cs-u .t{color:var(--ink-2)}
+.cs-m{grid-column:1;font-size:13px;color:var(--ink-3)}
+.cs-acts{grid-column:2;grid-row:1/3;display:flex;gap:1.1em;align-items:baseline}
+.cs-acts .link{font-size:13.5px}
+.cs-list .confirm{grid-column:1/-1;margin-top:.5em}
+.cs-list .confirm .says{flex:0 1 auto}
+.cs-state{grid-column:1/-1;display:flex;gap:.7em 1em;align-items:center;flex-wrap:wrap;font-size:14px;color:var(--ink-2)}
+.cs-state .no{color:var(--miss)}
+.cs-none{font-size:14.5px;color:var(--ink-2);margin:.4em 0 0}
+.cs-sec{margin-top:2.2em}
+
+/* C: boxes on the unit rows, and the bar pinned to the foot */
+.cu-h.pick{cursor:pointer}
+.cu-h.pick .n{position:relative}
+.cu-h.pick input{position:absolute;left:-26px;top:50%;transform:translateY(-50%);margin:0}
+.cu>li.nopick .cu-h .title{color:var(--ink-4)}
+.cs-pin{position:sticky;bottom:0;z-index:4;margin:0 -24px;padding:12px 24px 14px;background:var(--raised);border-top:1px solid var(--rule-2);display:flex;flex-wrap:wrap;gap:.6em 1em;align-items:center;font-size:14px}
+.cs-pin .field{flex:1 1 150px;width:auto}
+.cs-pin .cnt{font-weight:500}
+
+/* the reader */
+.cs-reader{display:flex;flex-direction:column;height:100vh}
+.cs-reader .about{max-width:calc(var(--measure) + 300px);width:100%;margin:0 auto;padding:16px 24px 12px;display:flex;flex-direction:column;gap:.35em;font-size:14px;color:var(--ink-2)}
+.cs-reader .about b{color:var(--ink);font-weight:500}
+.cs-reader .path-row{display:flex;gap:1em;align-items:baseline}
+.cs-reader code{font:12.5px var(--f-code);color:var(--ink-3)}
+.cs-reader iframe{flex:1;border:0;border-top:1px solid var(--rule);width:100%;background:var(--bg)}
+.cs-reader .confirm{margin-top:.4em}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="bar"></div>
+
+<script>
+/* ---------------- simulated content ---------------- */
+// a course: its units as [title, status]; pass and over are finished
+const COURSES = {
+  calc1: {title: 'Calculus I', due: 3, units: [['Limits', 'pass'], ['The derivative', 'pass'], ['Differentiation rules', 'pass'], ['Optimisation', 'now'],
+    ['The integral', 'over'], ['The fundamental theorem', 'not'], ['Related rates', 'not'], ['Series', 'not']]},
+  calc30: {title: 'Calculus 1 to 3', due: 4, units: ['Functions and graphs', 'Limits', 'Continuity', 'The derivative', 'Differentiation rules', 'The chain rule', 'Implicit differentiation', 'Related rates',
+    'Curve sketching', 'Optimisation', 'The definite integral', 'The fundamental theorem', 'Substitution', 'Integration by parts', 'Partial fractions', 'Improper integrals',
+    'Areas and volumes', 'Sequences', 'Series and convergence tests', 'Power series', 'Taylor series', 'Vectors and the dot product', 'Lines and planes', 'Partial derivatives',
+    'Gradients and directional derivatives', 'Multiple integrals', 'Change of variables', 'Line integrals', "Green's theorem", 'Stokes and divergence']
+    .map((t, i) => [t, i < 23 ? 'pass' : i === 23 ? 'over' : i === 24 ? 'now' : 'not'])},
+  pca: {title: 'Linear algebra for PCA', due: 0, units: [['Vectors', 'not'], ['Eigenvectors', 'not'], ['Principal components', 'not']]},
+};
+const EXAMPLE = '29-cheat-sheet-example.html';
+const FAILED = 'The cheat sheet writer took longer than three minutes.';
+const WHERE = '/home/you/.local/share/gauss/courses/calculus-i/cheat-sheets/';
+/* ---------------- state ---------------- */
+const st = {dir: 'a', course: 'calc1', moment: 'kept', theme: 'frappe', view: 'course',
+  open: false, picked: new Set(), instr: '', sheets: [], attempt: undefined, deleting: undefined, reading: undefined};
+let nextId = 3, timer;
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const sg = s => `<i class="sg ${s}" aria-hidden="true"></i>`;
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const course = () => COURSES[st.course];
+const finishedUnits = () => course().units.map(([, s], i) => s === 'pass' || s === 'over' ? i + 1 : 0).filter(Boolean);
+const unfinishedUnits = () => course().units.map(([, s], i) => s === 'pass' || s === 'over' ? 0 : i + 1).filter(Boolean);
+
+/** "Unit 2", "Units 2 and 3", "Units 1 to 4", "Units 1, 3 and 5 to 8". */
+function unitWords(ns) {
+  const runs = [];
+  for (const n of [...ns].sort((a, b) => a - b)) {
+    const last = runs[runs.length - 1];
+    if (last && n === last[1] + 1) last[1] = n; else runs.push([n, n]);
+  }
+  const parts = runs.map(([a, b]) => a === b ? `${a}` : b === a + 1 ? `${a} and ${b}` : `${a} to ${b}`);
+  const words = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return `${ns.length === 1 ? 'Unit' : 'Units'} ${words}`;
+}
+const titles = ns => [...ns].sort((a, b) => a - b).map(n => course().units[n - 1][0]).join(', ');
+const pages = n => n > 6 ? 'two printed pages at most' : 'one printed page';
+
+/* ---------------- moments ---------------- */
+function preset() {
+  clearTimeout(timer);
+  const fin = finishedUnits();
+  const two = fin.length >= 3 ? [fin[1], fin[2]] : fin;
+  const older = {id: 1, units: fin.slice(0, 4), instr: '', on: '24 November 2026'};
+  const newer = {id: 2, units: two, instr: 'Put the standard derivatives in one table.', on: '26 November 2026'};
+  Object.assign(st, {view: 'course', open: false, picked: new Set(), instr: '', sheets: [], attempt: undefined, deleting: undefined, reading: undefined});
+  if (!fin.length) { if (st.moment === 'pick') st.open = true; return; }
+  const m = st.moment;
+  if (m === 'pick') Object.assign(st, {open: true, picked: new Set(two), instr: 'Put the standard derivatives in one table.', sheets: [older]});
+  if (m === 'writing') Object.assign(st, {sheets: [older], attempt: {state: 'writing', units: two, instr: newer.instr}});
+  if (m === 'failed') Object.assign(st, {sheets: [older], attempt: {state: 'failed', units: two, instr: newer.instr, error: FAILED}});
+  if (m === 'kept' || m === 'delete' || m === 'reader') st.sheets = [newer, older];
+  if (m === 'delete') st.deleting = 2;
+  if (m === 'reader') Object.assign(st, {view: 'reader', reading: 2});
+  if (st.dir === 'a' && m !== 'none' && m !== 'reader') st.open = true;
+}
+function write(units, instr) {
+  clearTimeout(timer);
+  st.attempt = {state: 'writing', units: [...units].sort((a, b) => a - b), instr};
+  Object.assign(st, {open: st.dir === 'a', picked: new Set(), instr: ''});
+  render();
+  timer = setTimeout(() => {
+    st.sheets.unshift({id: nextId++, units: st.attempt.units, instr: st.attempt.instr, on: '26 November 2026'});
+    st.attempt = undefined;
+    render();
+  }, 3000);
+}
+
+/* ---------------- the kept sheets, the same in every direction ---------------- */
+function attemptRow() {
+  const a = st.attempt;
+  if (!a) return '';
+  const state = a.state === 'writing'
+    ? '<span class="spin" aria-hidden="true"></span><span>Writing the cheat sheet. This takes a minute; you can go on meanwhile.</span>'
+    : `<span class="no" role="alert">The cheat sheet could not be written. ${a.error}</span><button class="link" type="button" data-act="retry">Try again</button>`;
+  return `<li><div class="cs-u"><b>${unitWords(a.units)}</b> <span class="t">${titles(a.units)}</span></div><div class="cs-state">${state}</div></li>`;
+}
+function sheetRow(s) {
+  const confirm = st.deleting === s.id
+    ? `<div class="confirm"><span class="says">Delete this cheat sheet? The app cannot bring it back.</span>
+        <button class="btn sm quiet" type="button" data-act="delete" data-id="${s.id}">Delete the sheet</button><button class="link" type="button" data-act="keep">Cancel</button></div>` : '';
+  return `<li><div class="cs-u"><b>${unitWords(s.units)}</b> <span class="t">${titles(s.units)}</span></div>
+    <div class="cs-m">Written ${s.on}${s.instr ? ', with your instructions' : ''}</div>
+    <div class="cs-acts"><button class="link" type="button" data-act="read" data-id="${s.id}">Open</button><button class="link" type="button">Open in browser</button>
+      ${st.deleting === s.id ? '' : `<button class="link" type="button" data-act="asking" data-id="${s.id}">Delete</button>`}</div>${confirm}</li>`;
+}
+function kept() {
+  if (!st.attempt && !st.sheets.length) return '';
+  return `<ul class="cs-list">${attemptRow()}${st.sheets.map(sheetRow).join('')}</ul>`;
+}
+const NONE = '<p class="cs-none">A cheat sheet is written from finished units. None of this course\'s units is finished yet.</p>';
+const WHAT = 'One printed page on what the units you pick taught (definitions, formulas and procedures, each with a small example) and what to watch for, from your own misses.';
+
+/* ---------------- picking, A's boxes and B's chips ---------------- */
+function notPickable() {
+  const un = unfinishedUnits();
+  return un.length ? `<p class="cs-not">${unitWords(un)} ${un.length === 1 ? 'is' : 'are'} not finished, so ${un.length === 1 ? 'it' : 'they'} cannot be picked.</p>` : '';
+}
+function boxes() {
+  const fin = finishedUnits(), all = fin.every(n => st.picked.has(n));
+  return `<div class="cs-boxes"><label class="all"><input type="checkbox" data-all ${all ? 'checked' : ''}>All finished units (${fin.length})</label>
+    ${fin.map(n => `<label title="Unit ${n}, ${esc(course().units[n - 1][0])}"><input type="checkbox" data-u="${n}" ${st.picked.has(n) ? 'checked' : ''}><span><span class="n">${n}</span> ${course().units[n - 1][0]}</span></label>`).join('')}</div>${notPickable()}`;
+}
+function chips() {
+  const fin = finishedUnits(), all = fin.every(n => st.picked.has(n));
+  const picked = st.picked.size ? `<p class="cs-picked">${unitWords([...st.picked])}: ${titles(st.picked)}.</p>` : '';
+  return `<div class="cs-chips"><button class="chip all" type="button" data-all aria-pressed="${all}">All finished units</button>
+    ${fin.map(n => `<button class="chip" type="button" data-u="${n}" aria-pressed="${st.picked.has(n)}" title="${esc(course().units[n - 1][0])}">${n}</button>`).join('')}</div>${picked}${notPickable()}`;
+}
+function instrBox(rows = 2) {
+  return `<textarea class="field" rows="${rows}" data-instr placeholder="What to focus on, or how to lay it out (optional)" aria-label="Your instructions for the cheat sheet">${esc(st.instr)}</textarea>`;
+}
+function writeButton() {
+  const busy = st.attempt?.state === 'writing';
+  return `<button class="btn sm" type="button" data-act="write" ${st.picked.size && !busy ? '' : 'disabled'}>Write the cheat sheet</button>`;
+}
+function footSum() {
+  if (st.attempt?.state === 'writing') return 'One sheet is written at a time: this one waits until the other is done.';
+  return st.picked.size ? `${unitWords([...st.picked])}: ${pages(st.picked.size)}.` : 'Pick at least one unit.';
+}
+function form(pick) {
+  return `<div class="cs-q"><span class="lbl">Units</span>${pick}</div>
+    <div class="cs-q"><span class="lbl">Your instructions</span>${instrBox()}</div>
+    <div class="cs-foot"><span class="sum">${footSum()}</span><button class="link" type="button" data-act="close">Cancel</button>${writeButton()}</div>`;
+}
+
+/* ---------------- the course view ---------------- */
+function unitRows() {
+  const picking = st.dir === 'c' && st.open;
+  return course().units.map(([t, s], i) => {
+    const n = i + 1, fin = s === 'pass' || s === 'over';
+    const cnt = `<span class="cnt">${s === 'pass' ? 'Passed' : s === 'over' ? 'Overridden' : s === 'now' ? 'In progress' : ''}${sg(s === 'now' ? 'now' : s)}</span>`;
+    if (picking && fin) {
+      return `<li class="fold fin"><label class="cu-h pick"><span class="n"><input type="checkbox" data-u="${n}" ${st.picked.has(n) ? 'checked' : ''}>Unit ${n}</span><span class="title">${t}</span>${cnt}</label></li>`;
+    }
+    return `<li class="fold ${fin ? 'fin' : ''} ${picking ? 'nopick' : ''}"><button class="cu-h" type="button"><span class="n">Unit ${n}</span><span class="title">${t}</span>${cnt}</button></li>`;
+  }).join('');
+}
+function courseView() {
+  const c = course(), fin = finishedUnits(), a = st.dir === 'a', b = st.dir === 'b', cc = st.dir === 'c';
+  const nowN = c.units.findIndex(([, s]) => s === 'now') + 1;
+  const keptCount = st.sheets.length ? `<span class="cnt">${st.sheets.length} kept</span>` : '';
+  const due = c.due ? `<span class="due-dot"></span><span><b style="font-weight:500">${c.due} objectives</b> <span class="k">are due for review</span></span>`
+    : '<span class="k">Nothing is due for review.</span>';
+  const duebar = `<div class="duebar">${due}<span class="acts">${c.due ? '<button class="btn sm quiet" type="button">Review now</button>' : ''}<button class="link" type="button">Self-test</button>
+    ${a ? `<button class="link" type="button" data-act="${st.open ? 'close' : 'open'}" aria-expanded="${st.open}">Cheat sheets</button>${keptCount}` : ''}</span></div>`;
+
+  let aBlock = '';
+  if (a && st.open) {
+    const body = fin.length ? `${kept()}<div class="cs-q"><span class="lbl">${st.sheets.length || st.attempt ? 'A new sheet' : 'Write a cheat sheet'}</span><p class="hint" style="margin-top:0">${WHAT}</p></div>${form(boxes())}` : NONE;
+    aBlock = `<div class="cs-panel"><div class="card-h"><span class="lbl">Cheat sheets</span>${fin.length ? '' : '<span class="r"><button class="link" type="button" data-act="close">Close</button></span>'}</div>${body}</div>`;
+  } else if (a && st.attempt) {
+    aBlock = `<ul class="cs-list" style="margin-top:.6em">${attemptRow()}</ul>`;
+  }
+
+  const card = nowN ? `<div class="nx"><div><div class="lbl on">In progress</div><div class="title"><span class="lbl" style="font-size:12px;margin-right:.6em;vertical-align:.2em">Unit ${nowN}</span>${c.units[nowN - 1][0]}</div>
+      <div class="at"><span class="ticks" aria-hidden="true"><i class="past"></i><i class="now"></i><i></i></span>Segment 2 of 3</div></div>
+      <div class="go"><button class="btn" type="button">Continue</button></div></div>`
+    : `<div class="nx"><div><div class="lbl on">Next</div><div class="title"><span class="lbl" style="font-size:12px;margin-right:.6em;vertical-align:.2em">Unit 1</span>${c.units[0][0]}</div></div>
+      <div class="go"><button class="btn" type="button">Start unit 1</button></div></div>`;
+
+  let cBlock = '';
+  if (cc) {
+    const body = !fin.length ? NONE : st.attempt || st.sheets.length ? kept() : `<p class="cs-none">${WHAT} Pick the units in the list below.</p>`;
+    cBlock = `<div class="sec cs-sec"><span class="lbl">Cheat sheets</span><div class="acts">${fin.length && !st.open ? '<button class="link" type="button" data-act="open">Pick units</button>' : ''}</div></div>${body}`;
+  }
+  const pin = cc && st.open ? `<div class="cs-pin"><span class="cnt">${st.picked.size ? unitWords([...st.picked]) : 'No unit picked'}</span>
+      <button class="chip" type="button" data-all aria-pressed="${fin.every(n => st.picked.has(n))}">All finished units</button>
+      <input class="field" data-instr placeholder="Your instructions: what to focus on, or how to lay it out (optional)" aria-label="Your instructions for the cheat sheet" value="${esc(st.instr)}">
+      <button class="link" type="button" data-act="close">Cancel</button>${writeButton()}
+      ${st.attempt?.state === 'writing' ? `<span class="hint" style="flex-basis:100%;margin:0">${footSum()}</span>` : ''}</div>` : '';
+
+  let bBlock = '';
+  if (b) {
+    const list = st.attempt || st.sheets.length ? kept() : fin.length && !st.open ? `<p class="cs-none">${WHAT}</p>` : '';
+    const opened = st.open && fin.length ? `<div class="cs-panel">${form(chips())}</div>` : '';
+    bBlock = `<div class="sec"><span class="lbl">Cheat sheets</span><div class="acts">${fin.length && !st.open ? '<button class="link" type="button" data-act="open">Write a cheat sheet</button>' : ''}</div></div>
+      ${fin.length ? '' : NONE}${opened}${list}`;
+  }
+
+  return `<div class="pg"><header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span><span class="here"><span class="t">${c.title}</span></span></nav>
+      <div class="acts"><button class="tb" type="button">What I know</button></div></header>
+    <div class="pg-scroll"><div class="pg-col"><h1 class="title">${c.title}</h1>
+      <div class="meta"><span><b>${c.units.length}</b> units</span><span><b>${fin.length}</b> finished</span></div>
+      <p class="proto">Units fold to one line here; piece 20 shows them open. Only the cheat sheets' place is new.</p>
+      ${duebar}${aBlock}${card}${cBlock}
+      <div class="sec"><span class="lbl">Units</span><div class="acts"><button class="link" type="button">Change the curriculum</button></div></div>
+      <ul class="cu">${unitRows()}</ul>
+      ${bBlock}${pin}
+    </div></div></div>`;
+}
+
+/* ---------------- the reader, the same in every direction ---------------- */
+function readerView() {
+  const s = st.sheets.find(x => x.id === st.reading);
+  if (!s) { st.view = 'course'; return courseView(); }
+  const confirm = st.deleting === s.id
+    ? `<div class="confirm"><span class="says">Delete this cheat sheet? The app cannot bring it back.</span>
+        <button class="btn sm quiet" type="button" data-act="delete" data-id="${s.id}">Delete the sheet</button><button class="link" type="button" data-act="keep">Cancel</button></div>` : '';
+  return `<div class="cs-reader"><header class="top"><nav class="path"><a class="home" href="21-library.html">Gauss</a><span class="sep">/</span><a href="#" data-act="back">${course().title}</a><span class="sep">/</span>
+      <span class="here"><span class="t">Cheat sheet</span></span></nav>
+      <div class="acts"><button class="tb" type="button">Open in browser</button><button class="tb" type="button" data-act="asking" data-id="${s.id}">Delete</button></div></header>
+    <div class="about"><span><b>${unitWords(s.units)}</b>: ${titles(s.units)}.</span>
+      <span>Written ${s.on}${s.instr ? '.' : ', with no instructions of yours.'}</span>
+      ${s.instr ? `<span>Your instructions: ${esc(s.instr)}</span>` : ''}
+      <span class="path-row"><code>${WHERE}${s.id}.html</code><button class="link" type="button">Copy path</button></span>${confirm}</div>
+    <iframe src="${EXAMPLE}" title="Cheat sheet, ${unitWords(s.units).toLowerCase()}"></iframe></div>`;
+}
+
+/* ---------------- render and input ---------------- */
+function render() {
+  document.documentElement.dataset.theme = st.theme;
+  const focus = document.activeElement?.dataset?.instr !== undefined;
+  app.innerHTML = st.view === 'reader' ? readerView() : courseView();
+  if (focus) { const f = $('[data-instr]'); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); } }
+  bar();
+}
+function toggleAll() {
+  const fin = finishedUnits();
+  st.picked = fin.every(n => st.picked.has(n)) ? new Set() : new Set(fin);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest?.('[data-act],[data-bar],button[data-u],button[data-all]');
+  if (!t) return;
+  if (t.dataset.bar) { const [k, v] = t.dataset.bar.split(':'); st[k] = v; if (k !== 'theme') preset(); render(); return; }
+  if (t.dataset.u) { const n = +t.dataset.u; st.picked.has(n) ? st.picked.delete(n) : st.picked.add(n); render(); return; }
+  if (t.dataset.all !== undefined) { toggleAll(); render(); return; }
+  const act = t.dataset.act, id = +t.dataset.id;
+  if (act === 'open') st.open = true;
+  if (act === 'close') Object.assign(st, {open: false, picked: new Set(), instr: ''});
+  if (act === 'write') write(st.picked, st.instr.trim());
+  if (act === 'retry') write(st.attempt.units, st.attempt.instr);
+  if (act === 'asking') st.deleting = id;
+  if (act === 'keep') st.deleting = undefined;
+  if (act === 'delete') { st.sheets = st.sheets.filter(s => s.id !== id); st.deleting = undefined; st.view = 'course'; }
+  if (act === 'read') { st.reading = id; st.deleting = undefined; st.view = 'reader'; }
+  if (act === 'back') { e.preventDefault(); st.view = 'course'; st.deleting = undefined; }
+  if (act !== 'write' && act !== 'retry') render();
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.u) { const n = +t.dataset.u; t.checked ? st.picked.add(n) : st.picked.delete(n); render(); }
+  else if (t.dataset.all !== undefined) { toggleAll(); render(); }
+});
+document.addEventListener('input', e => { if (e.target.dataset.instr !== undefined) { st.instr = e.target.value; } });
+document.addEventListener('keydown', e => { if (e.key === 'h' && !e.target.matches?.('textarea,input')) document.body.classList.toggle('nobar'); });
+function bar() {
+  const grp = (k, label, opts) => `<div class="grp"><span class="lbl0">${label}</span>${opts.map(([v, n]) => `<button type="button" data-bar="${k}:${v}" aria-pressed="${st[k] === v}">${n}</button>`).join('')}</div>`;
+  $('#bar').innerHTML = grp('dir', 'Direction', [['a', 'A: a panel beside Self-test'], ['b', 'B: a section of its own'], ['c', 'C: picking on the unit rows']])
+    + grp('course', 'Course', [['calc1', 'Calculus I, 4 of 8 finished'], ['calc30', 'Calculus 1 to 3, 24 of 30'], ['pca', 'Linear algebra for PCA, none']])
+    + grp('moment', 'Moment', [['none', 'No sheet yet'], ['pick', 'Picking'], ['writing', 'Writing'], ['failed', 'Failed'], ['kept', 'Two kept'], ['delete', 'Deleting'], ['reader', 'Reading one']])
+    + grp('theme', 'Theme', [['frappe', 'Frappé'], ['latte', 'Latte (rough)']])
+    + '<div class="keys">The controls work · H hides this</div>';
+}
+preset();
+render();
+</script>
+</body>
+</html>

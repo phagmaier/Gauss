@@ -499,10 +499,13 @@ what it tried and what was turned down. Beyond them:
 - **Course view**: a library row opens it, drafts too. It lists the
   sources, ending with a line that says a source is added in "Change the
   curriculum", and each unit's sections, with "Review now", "Self-test",
-  which opens a panel in place to set one up (piece 27, direction A), and
-  "Change the curriculum" ("Plan what comes next" once the course is
-  finished). An attached source can be removed until the first proposal;
-  a verified quote's citation carries a check.
+  which opens a panel in place to set one up (piece 27, direction A),
+  "Cheat sheets" beside it, which opens a panel in place with the kept
+  sheets above the picking of finished units (piece 29, direction A, the
+  user's choice, 2026-11-26), and "Change the curriculum" ("Plan what
+  comes next" once the course is finished). An attached source can be
+  removed until the first proposal; a verified quote's citation carries a
+  check.
 - **Planning**: a source is attached as in the intake (piece 26, direction
   A). Its card says it joins when a change is applied, and the change card
   lists the sources it adds.

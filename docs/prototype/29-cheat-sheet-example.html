@@ -1,0 +1,226 @@
+<!doctype html>
+<!--
+  PROTOTYPE, throwaway. Stage 6, piece 29: an example cheat sheet, made by
+  hand to show the kind of page the cheat sheet writer is asked for, as
+  17-notes-example.html is for the notes. The reader in 29-cheat-sheets.html
+  shows this file in a frame.
+
+  A sheet is reference, not a lesson: what the picked units taught, each
+  definition, formula and procedure with its assumptions and a small worked
+  example, and a short "watch for" list from the learner's own misses and
+  misconceptions on those units' objectives. It is as dense as stays
+  readable, and prints on one page of A4 or Letter, dark text on white;
+  two pages at most when many units are picked. This one is for two units
+  of Calculus I, written with the learner's instruction "Put the standard
+  derivatives in one table". The misses are invented for the example.
+
+  The real file has no script and loads nothing: the engine draws its math
+  with KaTeX and writes KaTeX's styles and fonts into it. This mock loads
+  KaTeX from a CDN and draws the math in the browser, to the same look.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cheat sheet: the derivative and its rules</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<style>
+:root{
+  --bg:#303446; --card:#292c3c; --line:#414559; --line2:#51576d;
+  --ink:#c6d0f5; --soft:#a5adce; --faint:#838ba7;
+  --mauve:#ca9ee6; --green:#a6d189; --peach:#ef9f76; --blue:#8caaee;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.sheet{max-width:1180px;margin:0 auto;padding:36px 32px 56px}
+.katex{font-size:1.05em}
+
+header{display:flex;align-items:baseline;flex-wrap:wrap;gap:.2em 1.4em;padding-bottom:10px;border-bottom:2px solid var(--line2);margin-bottom:14px}
+.kicker{margin:0;font-size:.78em;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--mauve)}
+h1{margin:0;font-size:1.75em;line-height:1.15;font-weight:650;letter-spacing:-.01em}
+.from{margin:0 0 0 auto;font-size:.82em;color:var(--faint)}
+
+.cols{columns:3 300px;column-gap:18px}
+.unit{margin:0 0 6px;font-size:.74em;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);break-after:avoid}
+.unit:not(:first-child){margin-top:12px}
+.box{break-inside:avoid;margin:0 0 10px;padding:8px 11px 9px;background:var(--card);border:1px solid var(--line);border-radius:9px}
+h2{margin:0 0 3px;font-size:1em;font-weight:650}
+h2 small{font-weight:400;color:var(--faint);font-size:.86em;margin-left:.3em}
+p{margin:0 0 4px}
+p:last-child{margin-bottom:0}
+.f .katex-display{margin:0}
+.eg{margin:4px 0 0;padding-left:8px;border-left:2px solid var(--line2);color:var(--soft)}
+.eg b{color:var(--faint);font-weight:600;font-size:.82em;letter-spacing:.05em;text-transform:uppercase;margin-right:.35em}
+.when{color:var(--faint);font-size:.9em}
+.f{margin:3px 0 5px;text-align:center;overflow-x:auto;overflow-y:hidden}
+ol.steps{margin:2px 0 4px;padding-left:1.3em}
+ol.steps li{margin:0}
+table{width:100%;border-collapse:collapse;margin:2px 0 0}
+td{padding:2px 4px;border-top:1px solid var(--line);vertical-align:baseline}
+tr:first-child td{border-top:0}
+td:nth-child(2){text-align:left}
+td.when{text-align:right;white-space:nowrap}
+.fig{display:block;width:100%;max-width:230px;height:auto;margin:4px auto 2px}
+.fig text{font:500 11px system-ui,sans-serif;fill:var(--soft)}
+
+.watch{background:color-mix(in srgb,var(--peach) 9%,var(--bg));border-color:color-mix(in srgb,var(--peach) 40%,var(--line))}
+.watch h2{color:var(--peach)}
+.watch ol{margin:0;padding-left:1.25em}
+.watch li{margin:0 0 5px}
+.watch li:last-child{margin-bottom:0}
+.watch .no{color:var(--peach)}
+.watch .yes{color:var(--green)}
+
+/* on paper: dark text on white, one page of A4 or Letter */
+@page{margin:9mm}
+@media print{
+  :root{--bg:#fff;--card:#fff;--line:#c9c9d1;--line2:#8a8a96;--ink:#111118;--soft:#2e2e38;--faint:#55555f;
+    --mauve:#5b2d91;--green:#1f5f12;--peach:#9a3f0c;--blue:#22468f;color-scheme:light}
+  .sheet{max-width:none;padding:0}
+  header{padding-bottom:4px;margin-bottom:7px}
+  h1{font-size:1.6em}
+  .cols{columns:3;column-gap:11px}
+  .box{padding:4px 7px 5px;margin-bottom:6px;border-radius:5px}
+  .f{overflow:visible}
+  .unit:not(:first-child){margin-top:7px}
+  .fig{max-width:150px}
+  body{font-size:8.8pt;line-height:1.32}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header>
+  <p class="kicker">Calculus I · Units 2 and 3 · Cheat sheet</p>
+  <h1>The derivative and its rules</h1>
+  <p class="from">Written 26 November 2026 · Your instructions: put the standard derivatives in one table</p>
+</header>
+
+<div class="cols">
+
+<p class="unit">Unit 2 · The derivative</p>
+
+<section class="box">
+  <h2>The derivative at a point</h2>
+  <div class="f">$$f'(a)=\lim_{h\to 0}\frac{f(a+h)-f(a)}{h}$$</div>
+  <p>The slope of the secant through $a$ and $a+h$, as $h$ shrinks to $0$. It exists only when this limit exists.</p>
+  <svg class="fig" viewBox="0 0 230 122" role="img" aria-label="A curve, the secant through the points at a and a + h, and the tangent at a">
+    <path d="M14 99.96 Q114 98.2 214 8.44" fill="none" stroke="#a5adce" stroke-width="2"/>
+    <path d="M45 109.2 L220 18.6" stroke="#8caaee" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <path d="M30 107 L220 40.2" stroke="#ca9ee6" stroke-width="1.8"/>
+    <circle cx="90" cy="85.92" r="3.5" fill="#ca9ee6"/><circle cx="165" cy="47.1" r="3.5" fill="#8caaee"/>
+    <text x="90" y="104" text-anchor="middle">a</text><text x="158" y="38" text-anchor="end">a + h</text>
+    <text x="14" y="14" style="fill:#8caaee">secant</text><text x="14" y="30" style="fill:#ca9ee6">tangent</text>
+  </svg>
+  <p class="eg"><b>Example</b>$f(x)=x^2$, $a=3$: $\dfrac{(3+h)^2-9}{h}=6+h\to 6$, so $f'(3)=6$.</p>
+</section>
+
+<section class="box">
+  <h2>The tangent line</h2>
+  <div class="f">$y=f(a)+f'(a)\,(x-a)$</div>
+  <p class="eg"><b>Example</b>$y=x^2$ at $a=3$: $y=9+6(x-3)=6x-9$.</p>
+</section>
+
+<section class="box">
+  <h2>Average and instantaneous rate</h2>
+  <p>Average over $[a,b]$: $\dfrac{f(b)-f(a)}{b-a}$, for $b\ne a$. Instantaneous at $a$: $f'(a)$.</p>
+  <p class="eg"><b>Example</b>$s(t)=4.9t^2$ metres. On $[1,2]$: $\dfrac{19.6-4.9}{1}=14.7$ m/s. At $t=1$: $s'(1)=9.8$ m/s.</p>
+</section>
+
+<section class="box">
+  <h2>Differentiable, continuous</h2>
+  <p>If $f'(a)$ exists, $f$ is continuous at $a$. Continuity alone does not give a derivative.</p>
+  <p class="eg"><b>Example</b>$|x|$ at $0$: the quotient $\frac{|h|}{h}$ is $-1$ for $h&lt;0$ and $1$ for $h&gt;0$, so no limit, no $f'(0)$, though $|x|$ is continuous there.</p>
+</section>
+
+<section class="box">
+  <h2>Notation</h2>
+  <p>$f'(x)=\dfrac{dy}{dx}=\dfrac{d}{dx}f(x)$ is a function of $x$; $f'(a)$ is one number, its value at $a$.</p>
+</section>
+
+<p class="unit">Unit 3 · Differentiation rules</p>
+
+<section class="box">
+  <h2>Powers, sums, constant multiples</h2>
+  <div class="f">$\dfrac{d}{dx}x^n=nx^{n-1}\qquad (af+bg)'=af'+bg'$</div>
+  <p class="when">For a whole number $n$, at every $x$; for any real $n$, at $x&gt;0$.</p>
+  <p class="eg"><b>Example</b>$(4x^3-2x+7)'=12x^2-2$; $\ (\sqrt{x})'=\dfrac{1}{2\sqrt{x}}$ for $x&gt;0$.</p>
+</section>
+
+<section class="box">
+  <h2>Product</h2>
+  <div class="f">$(fg)'=f'g+fg'$</div>
+  <p class="eg"><b>Example</b>$(x^2\sin x)'=2x\sin x+x^2\cos x$</p>
+</section>
+
+<section class="box">
+  <h2>Quotient <small>where $g(x)\ne 0$</small></h2>
+  <div class="f">$$\left(\frac{f}{g}\right)'=\frac{f'g-fg'}{g^2}$$</div>
+  <p class="eg"><b>Example</b>$\left(\dfrac{x}{x^2+1}\right)'=\dfrac{(x^2+1)-x\cdot 2x}{(x^2+1)^2}=\dfrac{1-x^2}{(x^2+1)^2}$</p>
+</section>
+
+<section class="box">
+  <h2>Chain</h2>
+  <div class="f">$\dfrac{d}{dx}f\bigl(g(x)\bigr)=f'\bigl(g(x)\bigr)\cdot g'(x)$</div>
+  <p>The outer derivative is taken at the inner value, then multiplied by the inner derivative.</p>
+  <p class="eg"><b>Example</b>$\bigl(\sin x^2\bigr)'=\cos(x^2)\cdot 2x$</p>
+</section>
+
+<section class="box">
+  <h2>Which rule first</h2>
+  <ol class="steps">
+    <li>Name the last operation: a sum, a product, a quotient or a function of a function.</li>
+    <li>Apply that rule, then the same steps to each piece.</li>
+  </ol>
+  <p class="eg"><b>Example</b>$x\,e^{-x^2}$ is a product: $e^{-x^2}+x\cdot(-2x)\,e^{-x^2}=(1-2x^2)\,e^{-x^2}$.</p>
+</section>
+
+<section class="box">
+  <h2>Implicit differentiation</h2>
+  <p>Differentiate both sides in $x$, with $y$ a function of $x$: each $y$ term brings a $\frac{dy}{dx}$. Solve for it.</p>
+  <p class="eg"><b>Example</b>$x^2+y^2=25$: $2x+2y\,\frac{dy}{dx}=0$, so $\frac{dy}{dx}=-\frac{x}{y}$ for $y\ne 0$. At $(3,4)$: $-\frac34$.</p>
+</section>
+
+<section class="box">
+  <h2>Inverse functions</h2>
+  <div class="f">$(f^{-1})'(b)=\dfrac{1}{f'(a)}$</div>
+  <p class="when">Where $f(a)=b$ and $f'(a)\ne 0$.</p>
+  <p class="eg"><b>Example</b>$f(x)=x^3+x$: $f(1)=2$, $f'(1)=4$, so $(f^{-1})'(2)=\frac14$.</p>
+</section>
+
+<section class="box">
+  <h2>Standard derivatives</h2>
+  <table>
+    <tr><td>$\sin x$</td><td>$\cos x$</td><td class="when"></td></tr>
+    <tr><td>$\cos x$</td><td>$-\sin x$</td><td class="when"></td></tr>
+    <tr><td>$\tan x$</td><td>$\sec^2 x$</td><td class="when">$\cos x\ne 0$</td></tr>
+    <tr><td>$e^x$</td><td>$e^x$</td><td class="when"></td></tr>
+    <tr><td>$a^x$</td><td>$a^x\ln a$</td><td class="when">$a&gt;0$</td></tr>
+    <tr><td>$\ln x$</td><td>$\dfrac1x$</td><td class="when">$x&gt;0$</td></tr>
+    <tr><td>$\arcsin x$</td><td>$\dfrac{1}{\sqrt{1-x^2}}$</td><td class="when">$|x|&lt;1$</td></tr>
+    <tr><td>$\arctan x$</td><td>$\dfrac{1}{1+x^2}$</td><td class="when"></td></tr>
+  </table>
+</section>
+
+<section class="box watch">
+  <h2>Watch for</h2>
+  <ol>
+    <li>The quotient's numerator starts with $f'g$. For $\frac{d}{dx}\frac{x}{x^2+1}$ you wrote <span class="no">$\frac{x^2-1}{(x^2+1)^2}$</span>; it is <span class="yes">$\frac{1-x^2}{(x^2+1)^2}$</span>. Check: at $x=0$ the function rises, so the numerator is positive there.</li>
+    <li>Take the outer derivative at the inner value: $(\sin x^2)'=\cos(x^2)\cdot 2x$, not <span class="no">$\cos(2x)$</span>.</li>
+    <li>Keep the inner derivative's sign: $(e^{-x^2})'=-2x\,e^{-x^2}$; you chose <span class="no">$2x\,e^{-x^2}$</span>.</li>
+    <li>$f'(3)$ is a number. For $f(x)=x^2$ you gave <span class="no">$2x$</span>; evaluate it: $f'(3)=6$.</li>
+    <li>A tangent can meet the curve again: the tangent to $y=x^3$ at $x=1$, $y=3x-2$, crosses it at $x=-2$.</li>
+  </ol>
+</section>
+
+</div>
+</div>
+<script>
+renderMathInElement(document.body, {delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}], throwOnError:false});
+</script>
+</body>
+</html>
