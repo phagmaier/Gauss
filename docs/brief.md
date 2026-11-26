@@ -377,7 +377,18 @@ what is due, and on-demand self-test.
   layout; it opens in the app and in a browser. It has no script, and its
   math is KaTeX's own HTML with styles and fonts embedded, as in the
   exported transcript (not MathML). The learner can add instructions of
-  their own (what to focus on, how to lay it out). Cheat sheets on request.
+  their own (what to focus on, how to lay it out).
+- **Cheat sheets**: written when the learner asks, from the course view,
+  for the finished units they pick: one, several or all of them. A sheet
+  fits one printed page, two at most when many units are picked. It gives
+  what those units taught as reference (definitions, formulas, procedures,
+  each with a small example), and a short list of what to watch for,
+  drawn from the learner's own misses and misconceptions on those units'
+  objectives, wherever they were answered. It is a page as the notes are,
+  with their rules on math, scripts, quotes and citations, and the learner
+  can add instructions. Each sheet is kept and listed in the course view
+  with its units and the date written; the learner can delete one. Writing
+  another never replaces one (the user's choices, 2026-11-26).
 - **Library**: a home view of all courses and one-offs, to stop and resume
   any, with how many objectives each has due for review (all those review
   could ask now, not only the three it would ask).
@@ -518,10 +529,9 @@ and calibration, unit gates, testing out of a unit, review of what is due,
 detours, source ingestion with verified quotes, artifacts, workspace,
 transcripts, unit notes, library view, backup.
 
-Later: on-demand self-test on a scope the learner picks, cheat sheets;
-starred messages for the notes, if the generated notes miss what the
-learner wants kept. A desktop app only once everything else works, if at
-all.
+Later: on-demand self-test on a scope the learner picks; starred messages
+for the notes, if the generated notes miss what the learner wants kept. A
+desktop app only once everything else works, if at all.
 
 ## Dropped
 

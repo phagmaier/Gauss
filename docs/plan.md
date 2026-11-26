@@ -44,11 +44,153 @@ because code and documents use them.
 
 ## Stage 6
 
-Cheat sheets; starred messages for the notes, if the generated notes miss
-what the learner wants kept; text recognition for scanned PDFs, and
-questions on a source's figure (left out of stage 4); ranking passage
-matches with a cheap model, if the learner's use shows local search leaves
-too many plausible matches. Each is planned when chosen.
+Starred messages for the notes, if the generated notes miss what the
+learner wants kept; text recognition for scanned PDFs, and questions on a
+source's figure (left out of stage 4); ranking passage matches with a
+cheap model, if the learner's use shows local search leaves too many
+plausible matches. Each is planned when chosen.
+
+Cheat sheets (6.30 to 6.32): `brief.md`, "Other features", "Cheat
+sheets"; piece 29, which 6.30 mocks. A cheat sheet is a one-shot writer's
+page, as the notes are. It reuses `engine/standalone-html.ts` and the
+notes writer's backend (`notesBackend`, Sonnet), whatever the course's
+backend. The request leaves the transcripts out: the transcripts of a
+course's units would not fit one request, and a one-page sheet needs the
+units' plans, the handoff notes and the learner's slips. The prompt is
+new model-facing text, which a real model first reads in the user check.
+
+### 6.30 Mock piece 29, cheat sheets — todo
+
+**Needs:** nothing open.
+**Why:** The course view has no place to ask for a cheat sheet or to list
+kept ones, and Gauss has no page for reading one.
+**Do:** Mock piece 29 in `docs/prototype/` in two or three directions in
+the redesign's look (`look.css`). Each direction covers:
+- where a sheet is asked for in the course view;
+- picking units: only finished ones can be picked, and "all finished
+  units" is one step;
+- the instructions box, as the notes have;
+- the list of kept sheets, each with its units, its date, "Open", "Open
+  in browser" and "Delete" with a plain confirmation;
+- a write in progress, and a failed one with its reason;
+- a course with no finished unit.
+
+Directions might be a panel in place beside "Self-test" (as piece 27), a
+"Cheat sheets" section of its own in the course view, or picking on the
+unit rows. Add `29-cheat-sheet-example.html`, a one-page sheet for two
+Calculus units (as `17-notes-example.html` is for notes): it shows the
+density the prompt will ask for, and it prints on one page, dark on
+white. Add the piece to `index.html` and ask the user to pick.
+**Done when:** the user has picked a direction. The pick is recorded in
+`brief.md`, "Page", and the rejected directions in the piece's header.
+`mise exec -- pnpm lint` passes.
+
+### 6.31 The cheat sheet writer and its record — todo
+
+**Needs:** nothing open. It can run before or beside 6.30.
+**Why:** Only `engine/notes.ts` writes a learner's page, and it writes
+for one unit, which a new write replaces.
+**Do:**
+- Put the schemas in `shared/cheat-sheet.ts`:
+  - the request: unit ids and instructions, capped as the notes' are;
+  - the writer's reply, a schema of its own, so the scripted backend can
+    tell it from `NotesReply`;
+  - a kept sheet: id, units, instructions, `writtenAt`;
+  - the list: the kept sheets, newest first, any attempt (`writing`, or
+    `failed` with its reason), and the units that can be picked.
+- `prompts/cheat-sheet.md` asks for one printed page (A4 and Letter),
+  two at most for many units, with print styles that fit it. It asks
+  for reference on what the units taught (definitions, formulas and
+  procedures, each with a small example) and a short "watch for" list
+  from the learner's slips. It repeats the notes rules it needs, since
+  each writer reads only its own prompt: reworking every value, stating
+  rules positively with their assumptions, quoting only verified quotes
+  with their citations, the SVG and math markup, the colours, and no
+  scripts.
+- `engine/cheat-sheets.ts` (`createCheatSheets`, a `CourseHolder`)
+  writes one sheet at a time per course. A unit that is not finished
+  (`isFinished`) or not in the course is refused, as is an empty pick or
+  a write while one runs. The picked units go in course order. Each unit
+  sends its title, goal, `testedOut`, plan (as `citedPlan` in `notes.ts`
+  gives it), its handoff note and its verified quotes (`source_quoted`
+  events) with their citations. The course sends one list of misses and
+  corrections on those units' objectives, wherever answered, with
+  disputes applied (`countedAnswers`, `disputesIn`), and their
+  misconceptions. Measure the request for thirty finished units of the
+  seed's size, and put the figure in a comment.
+  Its time limit and failure handling are the notes writer's.
+- Store a sheet in the record as `courses/<id>/cheat-sheets/<sheet
+  id>.html`, finished by `finishStandaloneHtml`, and `.json`, with the
+  metadata and the writer's document. Write the HTML first, then the JSON.
+  The list reads the JSON files, so a crash between the two leaves an
+  HTML file that no list shows, and `clearInterruptedWrites` removes it.
+  The backup commits after each write and each delete. Add the folder to
+  the data root map, and the prompt and the module to `architecture.md`.
+- Routes under the course: list (GET), write (POST, answering 202),
+  delete, a sheet's HTML (headers and policy as `${notesPath}/html`),
+  and "open" (as `${notesPath}/open`).
+- The scripted backend answers the reply schema with a small page that
+  names the units and echoes the instructions, so `pnpm dev:fake` writes
+  a sheet.
+**Done when:** fake-backend tests in a temporary root show the following.
+- A write for two finished units answers 202 and lists a `writing`
+  attempt. Once settled, the list holds one sheet with the units in
+  course order, its instructions and date, and its HTML has KaTeX's math
+  and no script.
+- The request the fake backend received holds both units' plans and
+  handoff notes, a miss on one of their objectives answered in another
+  unit's review, and their misconceptions. It holds no objective of an
+  unpicked unit and no miss that a dispute overturned.
+- An unfinished unit, an unknown unit, an empty pick and a second write
+  while one runs are each refused, and nothing is written.
+- A writer failure and the time limit each leave a `failed` attempt with
+  its reason and no file.
+- Delete removes both files. An unknown sheet's id is refused with 404,
+  as is an id that would reach outside the folder.
+- On a new server on the same root, the sheet is still listed, and a
+  lone HTML file from an interrupted write is gone.
+- Deleting the course is refused while a sheet is being written.
+
+`mise run check` passes.
+
+### 6.32 Cheat sheets on the page — todo
+
+**Needs:** 6.30 and 6.31.
+**Why:** Nothing on the page asks for, lists or opens a cheat sheet.
+**Do:** Build piece 29's picked direction in the course view, on 6.31's
+routes, and a reader page for a sheet, at its own route in `web/route.ts`,
+as `NotesReader` is for notes. A write in progress survives leaving the
+course view and coming back, as a notes write does.
+**Done when:** in Chromium on `pnpm dev:fake` with a fresh root, in
+"Calculus 1 to 3":
+- units 5 and later cannot be picked;
+- a sheet for units 2 and 3, written with an instruction, shows as
+  writing, then is listed with its units and date;
+- "Open" shows the scripted sheet naming both units, and its HTML route
+  serves the same page;
+- "all finished units" writes a second sheet, listed above the first;
+- deleting the first, confirmed, removes it from the list, and after a
+  server restart only the second is listed.
+
+"Linear algebra for PCA" shows the mock's state for a course with no
+finished unit. The page reads as the picked direction. `mise run check`
+passes.
+
+User check for cheat sheets. First, on `pnpm dev:fake` with a fresh root,
+open "Calculus 1 to 3". Units 5 and later cannot be picked. Pick units 1
+to 3, add an instruction, and write a sheet. Leave the course view and
+come back: the sheet is listed with its units and date.
+Open it in the app and then in your browser. Write another for all
+finished units: both are listed, the newer first. Delete the first.
+Restart the server: only the second is listed. Then, on `pnpm check:live`
+with a fresh root (a real model, run when you do this check), start a
+small course and finish two units, missing at least one check question
+on purpose. Write a cheat sheet for both units. See whether it covers
+what the units taught, its values are right, and its "watch for" list
+names your miss correctly. Print preview in the browser should show one
+page, dark text on white. If you have a course taught from a source with
+a finished unit, write one there too: any quote should be in the
+source's words, with its citation.
 
 ## Known gaps
 
