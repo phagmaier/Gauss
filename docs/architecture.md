@@ -319,7 +319,10 @@ worktree (`AGENTS.md`).
   is gone; wait on that. Send stays disabled while the message box is
   empty, so it shows readiness only after typing. Target a question's
   confidence buttons inside its open card: "90%" also matches an earlier
-  grade's "90% sure".
+  grade's "90% sure". Headers are not on the page, and the fake server
+  keeps no log of the turns it sends: to see one, run a throwaway copy of
+  `scripts/dev-fake.ts` that writes the scripted backend's `received`
+  turns to a file.
 - **Chromium**: on NixOS, get its path with
   `nix build nixpkgs#chromium --no-link --print-out-paths` and pass
   `app: "<that path>/bin/chromium"` to `browser.open`. Omp's managed

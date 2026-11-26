@@ -36,6 +36,9 @@ because code and documents use them.
   passed on 2026-11-25, walked by the user.
 - Stage 6, self-test (6.23 to 6.26): the user confirmed on 2026-11-25
   that both the scripted and live Claude checks passed.
+- Known-gap fixes K.31 and K.32 (the test's word and a tested-out unit):
+  their user check passed on 2026-11-25, walked through in Chromium on
+  `pnpm dev:fake` by the agent at the user's direction.
 
 ## Stage 6
 
@@ -45,32 +48,6 @@ scanned PDFs, and questions on a source's figure (left out of stage 4);
 ranking passage matches with a cheap model, if the learner's use shows
 local search leaves too many plausible matches. Each is planned when
 chosen.
-
-## Known-gap fixes
-
-The user check below is what is left of the gaps K.30's review left open
-(the user's choices, 2026-11-25). The tutor's word on the test is kept
-owed until it reaches the tutor, and a unit finished by testing out tells
-its tutor the teaching was skipped. A dispute notice lost to a failed
-write and a restart is accepted (a comment at `keepDispute` in
-`unit-record.ts` says why).
-
-### User check: the test's word and a tested-out unit
-
-On `pnpm dev:fake` with a fresh data root, in Chromium:
-
-1. Test out of a unit not started, and with its last question open,
-   stop the server. Replace the unit's `tutorSessionId` in `state.json`
-   with the same id ending in `broken`, start the server and reopen the
-   unit. Answer the question: the turn fails and the result card shows.
-   Press "Start fresh": after its greeting, the tutor's reply says what
-   the test showed, before anything else.
-2. Stop and start the server again with the card waiting: reopening
-   shows the card and no second word on the test.
-3. In another unit, test out with every answer right and take the
-   card's step that skips what passed: the unit finishes. Headers are not
-   on the page: the agent shows the next message's header from the
-   course's session log.
 
 ## Known gaps
 
